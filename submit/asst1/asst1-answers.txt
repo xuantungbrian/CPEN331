@@ -1,0 +1,114 @@
+Step 4:
+Invoke os161:
+sys161: System / 161 release 2.0.3, compiled Aug 10 2015 13 : 31 : 07
+
+	OS / 161 base system version 1.99.08
+	Copyright(c) 2000, 2001 - 2005, 2008 - 2011, 2013, 2014
+	President and Fellows of Harvard College.All rights reserved.
+
+	Put - your - group - name - here's system version 0 (DUMBVM #1)
+
+	292k physical memory available
+	Device probe...
+	lamebus0(system main bus)
+	emu0 at lamebus0
+	ltrace0 at lamebus0
+	ltimer0 at lamebus0
+	beep0 at ltimer0
+	rtclock0 at ltimer0
+	lrandom0 at lamebus0
+	random0 at lrandom0
+	lhd0 at lamebus0
+	lhd1 at lamebus0
+	lser0 at lamebus0
+	con0 at lser0
+
+	cpu0 : MIPS / 161 (System / 161 2.x) features 0x0
+	OS / 161 kernel[? for menu] :
+
+git log output:
+commit c8de6e902d3c3f0d711f8ea17a3a7ad1d095cdab(HEAD->master, tag: asst1 - start, origin / master)
+	Author : Tung Luu <tung2002@ssh-linux4.ece.ubc.ca>
+	Date : Fri Sep 9 21 : 32 : 06 2022 - 0700
+
+	Initial commit of os161 for CPEN33
+
+git tag output:
+asst1 - start1
+
+Step 5:
+	1) The first line of OS / 161 code that is executed when a trap occurs is line 69 (UTLB exception) or line 87 (general exception), 
+in kern / arch / mips / locore / exception - mips1.S. From there, it jumps to common_exception and continues at line 105. Next, it calls mis_trap 
+function at kern / arch / mips / locore / trap.c. An interrupt also gets treated the same, just different in mips_trap. This function will 
+determine the reason for which it is called and deal with it based on the reason. 
+	2) Line 84 in function __syscall in userland / lib / libc / arch / mips / syscalls - mips.S invokes system calls 
+from user program.
+	3)common/libc is written to be used by both the kernel and user-level program while userland/lib/libc just support
+user-level programs so they need to be separated.
+	4) if the host system supports 4.4BSD <err.h> and if the host system has ntohll() and htonll().
+	Changing MACHINE to x86 or having another location for the root of the installed system (OSTREE) will invalidate that configuration.
+	5) Name of the register are different. For example, rdi, rax, ... are used in x86 but mips use t9, k1, ...
+We make that separation since each architechture has different builts and if we want to reuse the code, we just need to rewrite the 
+dependent part and keep the independent.
+	6) The trapframe is 37 register long (line 133 in kern / arch / mips / locore / trap.c) (37*4=148 bytes) since it needs to save 37 register
+(kern / arch / mips / include / trapframe.h).
+	7) Changing MACHINE to x86 or changing PLATFORM
+	8) When a header needed to compile is changed
+	9) When I change the code since the code is change and make command will change the executable file accordingly.
+	10) In kern / main / menu.c, add an operation in cmdtable (line 530): { "hello", cmd_hello }. Then create a function in the file:
+	static
+		int
+		cmd_hello(int nargs, char **args)
+	{
+		(void)nargs;
+		(void)args;
+
+		kprintf("Hello world!");
+
+		return 0;
+	}
+	11) The crt0.S is for MIPS architecture (machine-dependent), which maybe I do not have.
+	12) The return value is used to check if main executes normally, otherwise a non-zero value is returned.
+	13) Add a case in switch (callno) (line 102) in kern / arch / mips / syscall / syscall.c with a syscall number from
+	kern / include / kern / syscall.h
+		Add a .c file for that syscall function in kern/syscall
+		Change header file in kern / include / syscall.h: add the function for syscall (at the end).
+
+Step 7:
+	14) __start()
+	15) addiu sp, sp, -24
+	16) Num     Type           Disp Enb Address    What
+	- 2      longjmp master keep n   0x8002c804 < longjmp > inf 1
+		1       breakpoint     keep y   0x800139e4 in kmain
+		at .. / .. / main / main.c:211 inf 1
+		2       breakpoint     keep y   0x80014a0c in menu
+		at .. / .. / main / menu.c : 697 inf 1
+
+	17) Load the boot string, then load the exception handlers in hard-wired address. Then, it jumps to kmain.
+	18) jal kmain (line 215 in kern / arch / sys161 / main / start.S)
+	19) 109             ram_bootstrap();
+	(gdb)
+		110             proc_bootstrap();
+	(gdb)
+		111             thread_bootstrap();
+	(gdb)
+		112             hardclock_bootstrap();
+	(gdb)
+		113             vfs_bootstrap();
+	(gdb)
+		114             kheap_nextgeneration();
+
+	20) (gdb) print *bootcpu
+		Cannot access memory at address 0x80000
+
+	21) (gdb) print *bootcpu
+		$2 = { c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {tl_head = {tln_prev = 0x0, tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {
+			  tln_prev = 0x8003af10, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_hardclocks = 0, c_spinlocks = 0, c_isidle = false, c_runqueue = {tl_head = {tln_prev = 0x0,
+			  tln_next = 0x8003af44, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af38, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {splk_lock = 0, splk_holder = 0x0},
+		  c_ipi_pending = 0, c_shootdown = {{ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0, splk_holder = 0x0} }
+
+	22) print allcpus
+	$1 = { arr = {v = 0x0, num = 0, max = 0} }
+
+	23) print allcpus
+	$1 = { arr = {v = 0x80039fe0, num = 1, max = 4} }
