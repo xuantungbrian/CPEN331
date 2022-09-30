@@ -1,0 +1,42 @@
+Step 2:
+
+1) When calling thread_exit(), the function remove the thread from the process's array of threads and change thread structure so that it belongs to no process.
+Then, interrupts are off and run queue is locked, the thread is added to the zombie threadlist and change its state into S_ZOMBIE. After that, get the next thread. 
+If there isn't a next thread, continue looping and cpu is idle. Next, do the context switch, change the wait channel and the state of the new thread. Finally, unlock
+the run queue, activate address space, clean up dead threads and turn interrupts back on.
+When it sleeps, it is added to the wait channel and changes its state to S_SLEEP. After that, get the next thread. If there isn't a next thread, continue looping and 
+cpu is idle. Next, do the context switch, change the wait channel and the state of the new thread. Finally, unlock the run queue, activate address space, clean up dead 
+threads and turn interrupts back on (as above for the rest).
+
+2) switchframe_switch() at line 42 in master/kern/arch/mips/thread/switch.S handles the context switch.
+
+3) It means that a thread can be in 1 of the 4 states: 
+	S_RUN,		/* running */
+	S_READY,	/* ready to run */
+	S_SLEEP,	/* sleeping */
+	S_ZOMBIE,	/* zombie; exited but not yet deleted */
+
+4) Turn interrupts off means that no interrupts will be handle in the interrupt handler. It is accomplished by using splhigh(). It is important 
+since interrupts can lead to a context switch, which is bad when we want some piece of code to finish before exit.
+
+5) When a thread wake up another thread, the first element is taken out of the wait channel. If there is none, return. If there is one then call thread_make_runnable(). 
+This function will change the state of the thread from the wait channel to S_READY and add it to the run queue. A sleeping thread needs to be woken up (as above) and wait
+for a context switch to it.
+
+6) thread_switch() takes the first thread out of the run queue.
+   schedule() reshuffle the current CPU's run queue by job priority.
+   thread_consider_migration() (indirectly) affect the run queue by moving threads to other less busy or idle cpus.
+
+7) In schedule(), threads will run in round-robin fashion.
+   In thread_switch(), threadlist_remhead() will take the first thread out of the run queue.
+   thread_consider_migration() (indirectly) affect the run queue by moving threads to other less busy or idle cpus.
+
+8) Every 4 hardclock, the scheduler (schedule()) is called and every 16 hardclock, thread_consider_migration() is called.
+   thread_yield is the hardware independent function called on a timer interrupt.
+
+9) wchan_sleep can be used in a P so that if the semaphore count is equal to 0, the thread can go to sleep and wait for some thread to wake it when the semaphore count is 
+larger than 0.
+   wchan_wakeone() can be used in a V so that when the code is finished and the semaphore count becomes larger than 0, some thread can be woken up and take that semaphore
+and start to execute its code.
+
+10) It is protected by a spinlock so that only one operation happen at a time (either sleep or wake up)
