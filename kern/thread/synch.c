@@ -174,7 +174,7 @@ lock_destroy(struct lock *lock)
 {
 	KASSERT(lock != NULL);
 
-	/* wchan_cleanup will assert if anyone's waiting on it */
+	/* wchan_cleanup will assert if anyone's waiting on it */	
 	spinlock_cleanup(&lock->lk_spinlock);
 	wchan_destroy(lock->lk_wchan);
 	kfree(lock->lk_name);
@@ -189,17 +189,17 @@ lock_acquire(struct lock *lock)
 	/* May not block in an interrupt
 	 * Always check to ensure robustness
 	 */
-	KASSERT(curthread->t_in_interrupt == false);
+	KASSERT(curthread->t_in_interrupt == false); 
 
 	// Use spinlock to protect wchan of lock
-	spinlock_acquire(&lock->lk_spinlock);
+	spinlock_acquire(&lock->lk_spinlock); 
 
 	while (lock->hold == 1) {
 		wchan_sleep(lock->lk_wchan, &lock->lk_spinlock);
 	}
 
 	lock->hold = 1;
-	lock->thread_holder = curthread;
+	lock->thread_holder = curthread; 
 
 	spinlock_release(&lock->lk_spinlock);
 }
@@ -211,7 +211,7 @@ lock_release(struct lock *lock)
 
 	spinlock_acquire(&lock->lk_spinlock);
 
-	lock->thread_holder = NULL;
+	lock->thread_holder = NULL; 
 	lock->hold = 0;
 
 	wchan_wakeone(lock->lk_wchan, &lock->lk_spinlock);
@@ -293,7 +293,7 @@ cv_wait(struct cv *cv, struct lock *lock)
 }
 
 void
-cv_signal(struct cv *cv, struct lock *lock)
+cv_signal(struct cv *cv, struct lock *lock) 
 {
 	//Check if cv, lock exists and if this thread holds the lock
 	KASSERT(cv != NULL);
