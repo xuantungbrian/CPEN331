@@ -5,7 +5,7 @@ ELFMAG2		'L'
 ELFMAG3		'F'
 
 2.What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
-UIO_USERISPACE is user process code, while UIO_USERSPACE is user process data. We use UIO_SYSSPACE when the
+UIO_USERISPACE is user process code, while UIO_USERSPACE is user process data. We use UIO_SYSSPACE when the 
 the memory block is in the kernel. (line 67-71 in kern/include/uio.h)
 
 3.Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
