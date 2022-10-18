@@ -109,7 +109,12 @@ syscall(struct trapframe *tf)
 				 (userptr_t)tf->tf_a1);
 		break;
 
-	    /* Add stuff here */
+	    case SYS_open:
+		err = sys_open((userptr_t)tf->tf_a0,
+				 		tf->tf_a1,
+						 &retval
+				 );
+		break;
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
@@ -132,7 +137,7 @@ syscall(struct trapframe *tf)
 		tf->tf_v0 = retval;
 		tf->tf_a3 = 0;      /* signal no error */
 	}
-
+	
 	/*
 	 * Now, advance the program counter, to avoid restarting
 	 * the syscall over and over again.

@@ -1,0 +1,66 @@
+1.What are the ELF magic numbers?
+ELFMAG0		0x7f
+ELFMAG1		'E'
+ELFMAG2		'L'
+ELFMAG3		'F'
+
+2.What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
+UIO_USERISPACE is user process code, while UIO_USERSPACE is user process data. We use UIO_SYSSPACE when the
+the memory block is in the kernel. (line 67-71 in kern/include/uio.h)
+
+3.Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
+
+
+4.In runprogram(), why is it important to call vfs_close() before going to usermode?
+Thread must close the file before going to user mode, so that other threads could open the file.
+If we don't close the file, the file would be never closed.
+
+5.What function forces the processor to switch into usermode? Is this function machine dependent?
+mips_usermode (trap.c line 368) then calls to asm_usermode() (exception-mips1.S line 340). They are both machine dependent code.
+
+6.In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
+copyin/copyout is defined in: kern/include/copyinout.h line 67-68
+memmove is defined in: kern/include/lib.h line 152 
+copyin and copyout cannot be implemented as simply as memmove, because they are arranged to prevent fatal kernel memory faults if invalid addresses are supplied by user-level code.
+
+7.What (briefly) is the purpose of userptr_t?
+
+
+8.What is the numerical value of the exception code for a MIPS system call?
+8 - from /src/kern/arch/mips/include/trapframe.h line 91
+
+
+9.How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
+4 bytes (kern/arch/mips/syscall/syscall.c, line 68-69 and 136-141)
+
+10.Why do you "probably want to change" the implementation of kill_curthread()?
+If there are fatal faults, we should not call panic. Instead, we may just make an alert, and let other processes run.
+
+11.What would be required to implement a system call that took more than 4 arguments?
+Since the later (after 4th) arguments are in the user stack, the kernel need to be able to use the 
+copyin/copyout functions to get the data in the user stack.
+
+12.What is the purpose of the SYSCALL macro?
+It will work as a function for userland code. It will load the syscall number into v0 and jump to the 
+shared syscall code to make a syscall (userland/lib/libc/arch/mips/syscalls-mips.S).
+
+13.What is the MIPS instruction that actually triggers a system call? (Answer this by reading the source in this directory, not looking somewhere else.)
+syscall (line 84 in userland/lib/libc/arch/mips/syscalls-mips.S).
+
+14.After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value. Thus, lseek() takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg2), and needs to return a 64-bit offset value. In void syscall(struct trapframe *tf) where will you find each of the three arguments (in which registers) and how will you return the 64-bit offset?
+a0 will hold 32-bit file handle.
+a1 and a2 will hold 64-bit offset.
+a3 will hold 32-bit whence.
+64-bit offset will be returned in v0 and v1
+(line 64-68 in userland/lib/libc/arch/mips/syscalls-mips.S)
+
+15.As you were reading the code in runprogram.c and loadelf.c, you probably noticed how the kernel manipulates the files. Which kernel function is called to open a file? Which macro is called to read the file? What about to write a file? Which data structure is used in the kernel to represent an open file? 
+kernel function called to open a file: vfs_open (line 63 in runprogram.c)
+Macro called to read the file: O_RDONLY (line 63 in runprogram.c)
+Kernel function called to open a file: VOP_WRITE (its a macro, should we use the real function that does this?)
+(line 101-104 in kern/include/vnode.h)
+Data structure representing an open file: vnode (line 39 in kern/include/vnode.h)
+
+16.What is the purpose of VOP_INCREF and VOP_DECREF?
+VOP_INCREF and VOP_DECREF are used for reference count manipulation (increase reference and decrease reference
+respectively) (line 261 in kern/include/vnode.h)
