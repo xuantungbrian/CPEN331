@@ -48,6 +48,10 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <filetable.h>
+#include <limits.h>
+
+
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -81,7 +85,7 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
-
+	proc->fd = fd_create();
 	return proc;
 }
 

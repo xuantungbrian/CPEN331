@@ -44,6 +44,7 @@ void syscall(struct trapframe *tf);
  * Support functions.
  */
 
+
 /* Helper for fork(). You write this. */
 void enter_forked_process(struct trapframe *tf);
 
@@ -58,6 +59,6 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
-int sys_open(const char *filename, int flags, int *retval)
+int sys_open(userptr_t filename, int flags, int32_t *retval);
 
 #endif /* _SYSCALL_H_ */

@@ -74,10 +74,12 @@ void V(struct semaphore *);
  */
 struct lock {
         char *lk_name;
-	volatile int hold;
-	struct thread *thread_holder;
-	struct wchan *lk_wchan;
-	struct spinlock lk_spinlock;
+        // add what you need here
+        // (don't forget to mark things volatile as needed)
+        struct wchan *lock_wchan;
+	struct spinlock lock;
+        volatile unsigned lock_count;
+        struct thread *volatile lock_thread;
 };
 
 struct lock *lock_create(const char *name);
@@ -114,9 +116,12 @@ bool lock_do_i_hold(struct lock *);
  */
 
 struct cv {
-	char *cv_name;
-	struct wchan *cv_wchan;
-	struct spinlock cv_spinlock;
+        char *cv_name;
+        // add what you need here
+        // (don't forget to mark things volatile as needed)
+        struct wchan *cv_wchan;
+	struct spinlock cv_lock;
+        volatile unsigned cv_count;
 };
 
 struct cv *cv_create(const char *name);
@@ -140,4 +145,14 @@ void cv_signal(struct cv *cv, struct lock *lock);
 void cv_broadcast(struct cv *cv, struct lock *lock);
 
 
+struct rope {
+	volatile int ropeNum[16][2];
+};
+struct stake {
+	volatile int stakeNum[16][2];
+};
+
+
+struct rope *rope_create(void);
+struct stake *stake_create(void);
 #endif /* _SYNCH_H_ */
