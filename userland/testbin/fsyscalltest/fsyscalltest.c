@@ -361,7 +361,7 @@ main()
 {
 	test_openfile_limits();
 	printf("Passed Part 1 of fsyscalltest\n");
-
+	/*
 	simple_test();
 	printf("Passed Part 2 of fsyscalltest\n");
 	
@@ -375,6 +375,6 @@ main()
 	printf("Passed Part 5 of fsyscalltest\n");
 	
 	printf("All done!\n");
-	
+	*/
 	return 0;
 }

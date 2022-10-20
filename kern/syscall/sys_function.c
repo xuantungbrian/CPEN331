@@ -46,7 +46,7 @@ sys_open(const char *filename, int flags, int32_t *retval)
             //lock_acquire(fd_lock);
             curproc->fd->fd_entry[i] = kmalloc(sizeof(struct opentable));
             if(curproc->fd->fd_entry[i] == NULL){
-                return ENFILE;
+                return 29; // return ENFILE
             }
             curproc->fd->fd_entry[i]->offset = 0;// confirm offset starts at 0
             curproc->fd->fd_entry[i]->vnode_ptr = vn;
@@ -58,7 +58,7 @@ sys_open(const char *filename, int flags, int32_t *retval)
     lock_release(curproc->fd->fdlock);
 
     if(i == __OPEN_MAX){
-        return EMFILE;
+        return 28;// return EMFILE
     }
     *retval = i;
     return err;
@@ -68,9 +68,12 @@ sys_open(const char *filename, int flags, int32_t *retval)
 int
 sys_close(int fd)
 {
-    if(file_table[fd] == NULL){
+    lock_acquire(curproc->fd->fdlock);
+    if(curproc->fd->fd_entry[fd] == NULL){
         return 30; // Return EBDAF - refer to errno.h
     }
     kfree(curproc->fd->fd_entry[fd]);
+    lock_release(curproc->fd->fdlock);
+    return 0;
 }
 

@@ -17,7 +17,6 @@ struct fdtable{
     struct lock *fdlock;
 };
 
-struct fdtable *fd_create(void);
 
 #endif /* _FILETABLE_H_ */
 

@@ -41,9 +41,10 @@
 #include <synch.h>
 #include <filetable.h>
 #include <limits.h>
-
 struct addrspace;
 struct vnode;
+
+struct fdtable *fd_create(void);
 /*
  * Process structure.
  */
