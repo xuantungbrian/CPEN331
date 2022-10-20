@@ -64,7 +64,7 @@ sys_open(const char *filename, int flags, int *retval)
     *retval = i;
     return err;
 }
-
+/*
 ssize_t
 sys_read(int fd, void *buf, size_t buflen, int* retval) //definitely need to check for err, add lock
 {
@@ -112,7 +112,7 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 	u.uio_segflg = UIO_SYSSPACE; //need to check this
 	u.uio_rw = UIO_WRITE; //need to check this
 	u.uio_space = NULL;
-	/*line 99 to 106 needs to think again about the logic*/
+	//line 99 to 106 needs to think again about the logic
 	err = uiomove(buf, nbytes, u);
 	if (err) {
 		return err;
@@ -138,6 +138,7 @@ sys_lseek(int fd, off_t pos, int whence, int* retval) //add err, lock
 			file_table[fd]->offset = file_table[fd]->offset + pos;
 		case SEEK_SET:
 			//not sure how to do this?
+			//file_table[fd]->offset = end of file + pos
 		default:
 			//err
 	}
@@ -145,8 +146,7 @@ sys_lseek(int fd, off_t pos, int whence, int* retval) //add err, lock
 	*retval = file_table[fd]->offset;
 	return err;
 }
-
-/*
+*/
 int
 sys_close(int fd)
 {
@@ -155,4 +155,3 @@ sys_close(int fd)
     }
 
 }
-*/
