@@ -50,7 +50,8 @@
 #include <vnode.h>
 #include <filetable.h>
 #include <limits.h>
-
+#include <kern/fcntl.h>
+#include <vfs.h>
 
 
 /*
