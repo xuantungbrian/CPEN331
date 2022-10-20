@@ -13,25 +13,21 @@
 #include <test.h>
 #include <copyinout.h>
 #include <synch.h>
+#include <filetable.h>
+#include <proc.h>
 #include <sys_function.h>
 
-int
-sys_open(const char *filename, int flags, int *retval){
-    (void) filename;
-    (void) flags;
-    (void) retval;
-    return 0;
-}
 
 int
-sys_open(const char *filename, int flags, int *retval)
+sys_open(const char *filename, int flags, int32_t *retval)
 {
     struct vnode* vn = kmalloc(sizeof(struct vnode));
     int i;
     int err = 0;
     char buf[32];
-    size_t &actual;
-    err = copyinstr((const_userptr_t)filename, buf, sizeof(filename), *actual ); //must change 4th argument
+    size_t *actual = NULL;
+	//struct opentable* entry;
+    err = copyinstr((const_userptr_t)filename, buf, sizeof(filename), actual ); //must change 4th argument
     if (err) {
         kfree(vn);
 		return err;
@@ -43,21 +39,24 @@ sys_open(const char *filename, int flags, int *retval)
 		return err;
 	}
 
-
+    lock_acquire(curproc->fd->fdlock);
     for(i = 0; i < __OPEN_MAX ; i++) { //confirm i = 0 or 3
-        if(file_table[i] == NULL){
+		//entry = proc->fd->fd_entry[i];
+        if(curproc->fd->fd_entry[i] == NULL){
             //lock_acquire(fd_lock);
-            file_table[i] = kmalloc(sizeof(struct fd_entry));
-            if(file_table[i] == NULL){
+            curproc->fd->fd_entry[i] = kmalloc(sizeof(struct opentable));
+            if(curproc->fd->fd_entry[i] == NULL){
                 return ENFILE;
             }
-            file_table[i]->offset = 0;// confirm offset starts at 0
-            file_table[i]->vnode_ptr = vn;
-            file_table[i]->flags = flags;
+            curproc->fd->fd_entry[i]->offset = 0;// confirm offset starts at 0
+            curproc->fd->fd_entry[i]->vnode_ptr = vn;
+            curproc->fd->fd_entry[i]->flags = flags;
             //lock_release(fd_lock);
             break;
         }
     }
+    lock_release(curproc->fd->fdlock);
+
     if(i == __OPEN_MAX){
         return EMFILE;
     }
@@ -65,94 +64,13 @@ sys_open(const char *filename, int flags, int *retval)
     return err;
 }
 
-ssize_t
-sys_read(int fd, void *buf, size_t buflen, int* retval) //definitely need to check for err, add lock
-{
-	struct vnode *vn = file_table[fd]->vnode_ptr;
-	int err = 0;
-	struct iovec iov;
-	struct uio u;
 
-	iov.iov_ubase = (userptr_t)vn->vn_data;
-	iov.iov_len = memsize;		 // length of the memory space //this line is wrong
-	u.uio_iov = &iov;
-	u.uio_iovcnt = 1;
-	u.uio_resid = filesize;          // amount to read from the file
-	u.uio_offset = file_table[fd]->offset;
-	u.uio_segflg = UIO_USERSPACE;
-	u.uio_rw = UIO_WRITE;
-	u.uio_space = NULL;
-
-	err = VOP_READ(vn, &u);
-	if (err) {
-		return err;
-	}
-	err = uiomove(buf, buflen, u);
-	if (err) {
-		return err;
-	}
-	//*retval = have to return retval
-	return err;
-}
-
-ssize_t
-sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need to check for err, add lock
-{
-	struct vnode *vn = file_table[fd]->vnode_ptr;
-	int err = 0;
-	struct iovec iov;
-	struct uio u;
-
-	iov.iov_ubase = (userptr_t)vn->vn_data;
-	iov.iov_len = memsize;		 // length of the memory space //this line is wrong
-	u.uio_iov = &iov;
-	u.uio_iovcnt = 1;
-	u.uio_resid = filesize;          // amount to read from the file
-	u.uio_offset = file_table[fd]->offset;
-	u.uio_segflg = UIO_SYSSPACE; //need to check this
-	u.uio_rw = UIO_WRITE; //need to check this
-	u.uio_space = NULL;
-	/*line 99 to 106 needs to think again about the logic*/
-	err = uiomove(buf, nbytes, u);
-	if (err) {
-		return err;
-	}
-	err = VOP_READ(vn, &u);
-	if (err) {
-		return err;
-	}
-	
-
-	//have not return retval, how to find maximum length?
-	return err;
-}
-
-off_t
-sys_lseek(int fd, off_t pos, int whence, int* retval) //add err, lock
-{
-	int err = 0;
-	switch (whence) {
-		case SEEK_SET: //add library containing this
-			file_table[fd]->offset = pos;
-		case SEEK_CUR:
-			file_table[fd]->offset = file_table[fd]->offset + pos;
-		case SEEK_SET:
-			//not sure how to do this?
-		default:
-			//err
-	}
-
-	*retval = file_table[fd]->offset;
-	return err;
-}
-
-/*
 int
 sys_close(int fd)
 {
     if(file_table[fd] == NULL){
-        return EBADF;
+        return 30; // Return EBDAF - refer to errno.h
     }
-
+    kfree(curproc->fd->fd_entry[fd]);
 }
-*/
+
