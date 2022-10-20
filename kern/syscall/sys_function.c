@@ -19,15 +19,15 @@
 
 
 int
-sys_open(const char *filename, int flags, int32_t *retval)
+sys_open(userptr_t *filename, int flags, int32_t *retval)
 {
     struct vnode* vn = kmalloc(sizeof(struct vnode));
     int i;
     int err = 0;
-    char buf[32];
+    char buf[PATH_MAX];
     size_t *actual = NULL;
 	//struct opentable* entry;
-    err = copyinstr((const_userptr_t)filename, buf, sizeof(filename), actual ); //must change 4th argument
+    err = copyinstr((const_userptr_t)filename, buf, sizeof(buf), actual ); //must change 4th argument
     if (err) {
         kfree(vn);
 		return err;
@@ -61,6 +61,7 @@ sys_open(const char *filename, int flags, int32_t *retval)
         return 28;// return EMFILE
     }
     *retval = i;
+    kprintf("%d\n",i);
     return err;
 }
 
@@ -70,10 +71,12 @@ sys_close(int fd)
 {
     lock_acquire(curproc->fd->fdlock);
     if(curproc->fd->fd_entry[fd] == NULL){
+        kprintf("NO!!!!  %d\n",fd);
         return 30; // Return EBDAF - refer to errno.h
     }
-    kfree(curproc->fd->fd_entry[fd]);
+    curproc->fd->fd_entry[fd] = NULL;
     lock_release(curproc->fd->fdlock);
+    kprintf("closeeeeeeeeeeeeeeeeeeee  %d\n",fd);
     return 0;
 }
 

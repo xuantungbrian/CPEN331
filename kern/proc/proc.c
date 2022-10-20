@@ -53,49 +53,7 @@
 #include <kern/fcntl.h>
 #include <vfs.h>
 
-struct fdtable *
-fd_create()
-{
-    struct fdtable *fd;
-	fd = kmalloc(sizeof(struct fdtable));
-    char buf[5] = "con:";
-    int err;
-    fd->fdlock = lock_create("fdlock");
-    for (int i = 0; i < 3; i++) {
-        fd->fd_entry[i] = kmalloc(sizeof(struct opentable));
-        if (fd->fd_entry[i] == NULL) {
-            return NULL;
-        }
-        switch (i) {
-            case 0: //stdin
-                err = vfs_open(buf, O_RDONLY, 0, &fd->fd_entry[i]->vnode_ptr);
-                fd->fd_entry[0]->flags = O_RDONLY;
-                if (err) {
-                    kfree(fd->fd_entry[0]);
-                    return NULL;
-                }
-            case 1: //stdout
-                err = vfs_open(buf, O_WRONLY, 0, &fd->fd_entry[i]->vnode_ptr);
-                fd->fd_entry[0]->flags = O_WRONLY;
-                if (err) {
-                    kfree(fd->fd_entry[0]);
-                    kfree(fd->fd_entry[1]);
-                    return NULL;
-                }
-            case 2: //stderr
-                err = vfs_open(buf, O_WRONLY, 0, &fd->fd_entry[i]->vnode_ptr);
-                fd->fd_entry[0]->flags = O_WRONLY;
-                if (err) {
-                    kfree(fd->fd_entry[0]);
-                    kfree(fd->fd_entry[1]);
-                    kfree(fd->fd_entry[2]);
-                    return NULL;
-                }
-        }
-        fd->fd_entry[i]->offset = 0;
-    }
-    return fd;
-}
+
 /*
  * The process for the kernel; this holds all the kernel-only threads.
  */

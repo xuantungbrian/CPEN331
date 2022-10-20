@@ -30,24 +30,24 @@
 #ifndef _SYNCH_H_
 #define _SYNCH_H_
 
-/*
- * Header file for synchronization primitives.
- */
+ /*
+  * Header file for synchronization primitives.
+  */
 
 
 #include <spinlock.h>
 
-/*
- * Dijkstra-style semaphore.
- *
- * The name field is for easier debugging. A copy of the name is made
- * internally.
- */
+  /*
+   * Dijkstra-style semaphore.
+   *
+   * The name field is for easier debugging. A copy of the name is made
+   * internally.
+   */
 struct semaphore {
-        char *sem_name;
+	char *sem_name;
 	struct wchan *sem_wchan;
 	struct spinlock sem_lock;
-        volatile unsigned sem_count;
+	volatile unsigned sem_count;
 };
 
 struct semaphore *sem_create(const char *name, unsigned initial_count);
@@ -73,13 +73,11 @@ void V(struct semaphore *);
  * (should be) made internally.
  */
 struct lock {
-        char *lk_name;
-        // add what you need here
-        // (don't forget to mark things volatile as needed)
-        struct wchan *lock_wchan;
-	struct spinlock lock;
-        volatile unsigned lock_count;
-        struct thread *volatile lock_thread;
+	char *lk_name;
+	volatile int hold;
+	struct thread *thread_holder;
+	struct wchan *lk_wchan;
+	struct spinlock lk_spinlock;
 };
 
 struct lock *lock_create(const char *name);
@@ -116,12 +114,9 @@ bool lock_do_i_hold(struct lock *);
  */
 
 struct cv {
-        char *cv_name;
-        // add what you need here
-        // (don't forget to mark things volatile as needed)
-        struct wchan *cv_wchan;
-	struct spinlock cv_lock;
-        volatile unsigned cv_count;
+	char *cv_name;
+	struct wchan *cv_wchan;
+	struct spinlock cv_spinlock;
 };
 
 struct cv *cv_create(const char *name);
@@ -145,14 +140,4 @@ void cv_signal(struct cv *cv, struct lock *lock);
 void cv_broadcast(struct cv *cv, struct lock *lock);
 
 
-struct rope {
-	volatile int ropeNum[16][2];
-};
-struct stake {
-	volatile int stakeNum[16][2];
-};
-
-
-struct rope *rope_create(void);
-struct stake *stake_create(void);
 #endif /* _SYNCH_H_ */

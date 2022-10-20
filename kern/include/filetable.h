@@ -16,7 +16,7 @@ struct fdtable{
     struct opentable *fd_entry[__OPEN_MAX];
     struct lock *fdlock;
 };
-
+struct fdtable *fd_create(void);
 
 #endif /* _FILETABLE_H_ */
 

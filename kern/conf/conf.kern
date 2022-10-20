@@ -373,6 +373,7 @@ file      vfs/devnull.c
 # calls assignment.)
 #
 
+file      syscall/filetable.c
 file      syscall/loadelf.c
 file      syscall/runprogram.c
 file      syscall/time_syscalls.c
