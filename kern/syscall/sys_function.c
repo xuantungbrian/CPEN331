@@ -21,7 +21,7 @@
 int
 sys_open(userptr_t *filename, int flags, int32_t *retval)
 {
-    struct vnode* vn = kmalloc(sizeof(struct vnode));
+    struct vnode* vn;
     int i;
     int err = 0;
     char buf[PATH_MAX];
@@ -32,14 +32,13 @@ sys_open(userptr_t *filename, int flags, int32_t *retval)
         kfree(vn);
 		return err;
 	}
-
     err = vfs_open(buf, flags, 0, &vn); // need to add error codes
 	if (err) { //if the file is opened, should we return err or add something pointing to the vnode?
         kfree(vn);
 		return err;
 	}
-
     lock_acquire(curproc->fd->fdlock);
+
     for(i = 0; i < __OPEN_MAX ; i++) { //confirm i = 0 or 3
 		//entry = proc->fd->fd_entry[i];
         if(curproc->fd->fd_entry[i] == NULL){
@@ -56,7 +55,6 @@ sys_open(userptr_t *filename, int flags, int32_t *retval)
         }
     }
     lock_release(curproc->fd->fdlock);
-
     if(i == __OPEN_MAX){
         return 28;// return EMFILE
     }
@@ -64,17 +62,19 @@ sys_open(userptr_t *filename, int flags, int32_t *retval)
     kprintf("%d\n",i);
     return err;
 }
+
 int
 sys_close(int fd)
 {
-    lock_acquire(curproc->fd->fdlock);
-    if(curproc->fd->fd_entry[fd] == NULL){
-        kprintf("NO!!!!  %d\n",fd);
-        return 30; // Return EBDAF - refer to errno.h
-    }
-    curproc->fd->fd_entry[fd] = NULL;
-    lock_release(curproc->fd->fdlock);
-    kprintf("closeeeeeeeeeeeeeeeeeeee  %d\n",fd);
-    return 0;
+	lock_acquire(curproc->fd->fdlock);
+	if (curproc->fd->fd_entry[fd] == NULL) {
+		kprintf("NO!!!!  %d\n", fd);
+		return 30; // Return EBDAF - refer to errno.h
+	}
+	vfs_close(curproc->fd->fd_entry[fd]->vnode_ptr);
+	kfree(curproc->fd->fd_entry[fd]);
+	curproc->fd->fd_entry[fd] = NULL;
+	lock_release(curproc->fd->fdlock);
+	kprintf("closeeeeeeeeeeeeeeeeeeee  %d\n", fd);
+	return 0;
 }
-

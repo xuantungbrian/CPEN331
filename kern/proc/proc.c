@@ -86,7 +86,17 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
-	proc->fd = fd_create();
+	
+	/*Initialize file table if proc is not [kernel]*/
+	char b[] = "[kernel]";
+	int i;
+	for (i = 0; name[i] != 0 && name[i] == b[i]; i++) {
+		/* nothing */
+	}
+	if (name[i] != b[i]) {
+		proc->fd = fd_create();
+	}
+
 	return proc;
 }
 
@@ -222,7 +232,6 @@ proc_create_runprogram(const char *name)
 		newproc->p_cwd = curproc->p_cwd;
 	}
 	spinlock_release(&curproc->p_lock);
-
 	return newproc;
 }
 
