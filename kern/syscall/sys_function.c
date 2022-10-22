@@ -18,10 +18,11 @@
 #include <sys_function.h>
 #include <kern/fcntl.h>
 #include <kern/stat.h>
+#include <endian.h>
 
 
 int
-sys_open(userptr_t *filename, int flags, int32_t *retval)
+sys_open(userptr_t *filename, int flags, int *retval)
 {
 	int rw_flags = flags & O_ACCMODE;
 	if (rw_flags != O_RDONLY && rw_flags != O_WRONLY && rw_flags != O_RDWR) {
@@ -51,7 +52,7 @@ sys_open(userptr_t *filename, int flags, int32_t *retval)
 
 	for (i = 0; i < __OPEN_MAX; i++) { 
 		if (curproc->fd->fd_entry[i] == NULL) {
-			curproc->fd->fd_entry[i] = kmalloc(sizeof(struct opentable));
+			curproc->fd->fd_entry[i] = kmalloc(sizeof(struct fd_state));
 			if (curproc->fd->fd_entry[i] == NULL) {
 				lock_release(curproc->fd->fdlock);
 				return ENFILE; 
@@ -80,7 +81,7 @@ sys_close(int fd)
 	if (curproc->fd->fd_entry[fd] == NULL) {
 		kprintf("Close unopened file %d\n", fd);
 		lock_release(curproc->fd->fdlock);
-		return EBADF; // Return EBDAF - refer to errno.h
+		return EBADF; 
 	}
 	vfs_close(curproc->fd->fd_entry[fd]->vnode_ptr);
 	//kfree(curproc->fd->fd_entry[fd]);
@@ -203,6 +204,7 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 	lock_acquire(curproc->fd->fdlock);
 	err = VOP_READ(vn, &u);
 	if (err) {
+		lock_release(curproc->fd->fdlock);
 		return err;
 	}
 
@@ -216,6 +218,7 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 	err = uiomove((void*)buf, amount_read, &u);
 	if (err) {
 		kprintf("Cannot uiomove in sys_read");
+		lock_release(curproc->fd->fdlock);
 		return err;
 	}
 	
@@ -258,6 +261,7 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 	err = uiomove((void*)buf, nbytes, &u);
 	if (err) {
 		kprintf("Cannot uiomove in sys_write\n");
+		lock_release(curproc->fd->fdlock);
 		return err;
 	}
 
@@ -270,6 +274,7 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 	err = VOP_WRITE(vn, &u);
 	if (err) {
 		kprintf("Cannot VOP_WRITE in sys_write\n");
+		lock_release(curproc->fd->fdlock);
 		return err;
 	}
 
@@ -281,13 +286,12 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 }
 
 int
-sys_lseek(int fd, off_t pos, int whence, int* retval) 
+sys_lseek(int fd, off_t pos, int whence, off_t* retval)
 {
 	int err = 0;
 	struct stat status;
 	int saved_offset = curproc->fd->fd_entry[fd]->offset;
 	if (fd >= __OPEN_MAX) {
-		kprintf("fd larger than maximum fd\n");
 		return EBADF;
 	}
 	else if (curproc->fd->fd_entry[fd] == NULL) {
@@ -304,14 +308,20 @@ sys_lseek(int fd, off_t pos, int whence, int* retval)
 	switch (whence) {
 		case 0: 
 			curproc->fd->fd_entry[fd]->offset = pos;
+			break;
+
 		case 1:
 			curproc->fd->fd_entry[fd]->offset = curproc->fd->fd_entry[fd]->offset + pos;
+			break;
+
 		case 2:
 			err = VOP_STAT(curproc->fd->fd_entry[fd]->vnode_ptr, &status);
 			if (err) {
+				lock_release(curproc->fd->fdlock);
 				return err;
 			}
 			curproc->fd->fd_entry[fd]->offset = status.st_size + pos;
+			break;
 	}
 	lock_release(curproc->fd->fdlock);
 
@@ -319,6 +329,7 @@ sys_lseek(int fd, off_t pos, int whence, int* retval)
 		*retval = curproc->fd->fd_entry[fd]->offset;
 	}
 	else {
+		curproc->fd->fd_entry[fd]->offset = saved_offset;
 		*retval = saved_offset;
 		return EINVAL;
 	}
