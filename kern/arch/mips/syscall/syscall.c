@@ -116,6 +116,28 @@ syscall(struct trapframe *tf)
 	    case SYS_close:
 		err = sys_close(tf->tf_a0);
 		break;
+	
+       	case SYS_read:
+    	err = sys_read((int)tf->tf_a0,
+            		(userptr_t)tf->tf_a1,
+			       	(size_t)tf->tf_a2,
+			       	&retval);
+                break;
+
+	    case SYS_write:
+                err = sys_write((int)tf->tf_a0,
+                               (userptr_t)tf->tf_a1,
+                               (size_t)tf->tf_a2,
+                               &retval);
+                break;
+	 
+	    case SYS_lseek:
+                err = sys_lseek((int)tf->tf_a0,
+                               (off_t)tf->tf_a1,
+                               (int)tf->tf_a2,
+                               &retval);
+                break;
+
 
 		case SYS_dup2:
 		err = sys_dup2((int)tf->tf_a0,(int)tf->tf_a1,&retval);
@@ -125,6 +147,9 @@ syscall(struct trapframe *tf)
 		err = sys_chdir((const char*)tf->tf_a0);
 		break;
 
+		case SYS___getcwd:
+		err = sys__getcwd((char *)tf->tf_a0,(size_t)tf->tf_a1, &retval);
+		break;
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
