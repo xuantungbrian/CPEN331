@@ -19,6 +19,7 @@
 #include <kern/fcntl.h>
 #include <kern/stat.h>
 #include <endian.h>
+#include <vm.h>
 
 
 int
@@ -38,14 +39,12 @@ sys_open(userptr_t *filename, int flags, int *retval)
 	lock_acquire(curproc->fd->fdlock);
 	err = copyinstr((const_userptr_t)filename, buf, sizeof(buf), actual); 
 	if (err) {
-		kprintf("Cannot copy filename from userland\n");
 		lock_release(curproc->fd->fdlock);
 		return err;
 	}
 
 	err = vfs_open(buf, flags, 0, &vn); 
 	if (err) { 
-		kprintf("Cannot open file\n");
 		lock_release(curproc->fd->fdlock);
 		return err;
 	}
@@ -70,24 +69,33 @@ sys_open(userptr_t *filename, int flags, int *retval)
 	}
 
 	*retval = i;
-	kprintf("Close file %d\n", i);
 	return err;
 }
 
 int
 sys_close(int fd)
 {
+	int i;
 	lock_acquire(curproc->fd->fdlock);
+	if (fd >= __OPEN_MAX || fd < 0) {
+		lock_release(curproc->fd->fdlock);
+		return EBADF; 
+	}
 	if (curproc->fd->fd_entry[fd] == NULL) {
-		kprintf("Close unopened file %d\n", fd);
 		lock_release(curproc->fd->fdlock);
 		return EBADF; 
 	}
 	vfs_close(curproc->fd->fd_entry[fd]->vnode_ptr);
-	//kfree(curproc->fd->fd_entry[fd]);
+	for (i=0; i<__OPEN_MAX; i++) {
+		if (curproc->fd->fd_entry[fd] == curproc->fd->fd_entry[i]) {
+			break;
+		}
+	}
+	if (i == __OPEN_MAX) {
+		kfree(curproc->fd->fd_entry[fd]);
+	}
 	curproc->fd->fd_entry[fd] = NULL;
 	lock_release(curproc->fd->fdlock);
-	kprintf("Close file %d\n", fd);
 	return 0;
 }
 
@@ -111,14 +119,11 @@ sys_dup2(int oldfd, int newfd, int32_t *retval)
         return 0;
     }
     curproc->fd->fd_entry[newfd] = curproc->fd->fd_entry[oldfd];
-	kprintf(" %p to %p\n", curproc->fd->fd_entry[newfd], curproc->fd->fd_entry[oldfd]);
-	kprintf(" %p to %p\n", curproc->fd->fd_entry[newfd]->vnode_ptr, curproc->fd->fd_entry[oldfd]->vnode_ptr);
     curproc->fd->fd_entry[newfd]->vnode_ptr->vn_refcount++;
 
     *retval = newfd;
 
     lock_release(curproc->fd->fdlock);
-    kprintf("sys dup2  %d to %d\n", oldfd, newfd);
     return 0;
     
 }
@@ -174,14 +179,26 @@ sys__getcwd( char *buf, size_t buflen, int32_t *retval){
 int
 sys_read(int fd, void *buf, size_t buflen, int* retval)
 {
-	if (fd >= __OPEN_MAX) {
+	lock_acquire(curproc->fd->fdlock);
+	if (fd >= __OPEN_MAX || fd < 0) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
 	else if (curproc->fd->fd_entry[fd] == NULL) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
 	else if (curproc->fd->fd_entry[fd]->flags == O_WRONLY) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
+	}
+	if (buf == NULL) {
+		lock_release(curproc->fd->fdlock);
+		return EFAULT;
+	}
+	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+buflen) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+buflen) >= USERSPACETOP) {
+		lock_release(curproc->fd->fdlock);
+		return EFAULT;
 	}
 
 	struct vnode *vn = curproc->fd->fd_entry[fd]->vnode_ptr;
@@ -201,7 +218,6 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 	u.uio_rw = UIO_READ;
 	u.uio_space = NULL;
 
-	lock_acquire(curproc->fd->fdlock);
 	err = VOP_READ(vn, &u);
 	if (err) {
 		lock_release(curproc->fd->fdlock);
@@ -217,7 +233,6 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 
 	err = uiomove((void*)buf, amount_read, &u);
 	if (err) {
-		kprintf("Cannot uiomove in sys_read");
 		lock_release(curproc->fd->fdlock);
 		return err;
 	}
@@ -231,14 +246,26 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 int
 sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need to check for err, add lock
 {
-	if (fd >= __OPEN_MAX) {
+	lock_acquire(curproc->fd->fdlock);
+	if (fd >= __OPEN_MAX || fd < 0) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
 	else if (curproc->fd->fd_entry[fd] == NULL) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
 	else if (curproc->fd->fd_entry[fd]->flags == O_RDONLY) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
+	}
+	if (buf == NULL) {
+		lock_release(curproc->fd->fdlock);
+		return EFAULT;
+	}
+	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+nbytes) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+nbytes) >= USERSPACETOP) {
+		lock_release(curproc->fd->fdlock);
+		return EFAULT;
 	}
 	
 	struct vnode *vn = curproc->fd->fd_entry[fd]->vnode_ptr;
@@ -257,10 +284,8 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 	u.uio_rw = UIO_READ;
 	u.uio_space = NULL;
 
-	lock_acquire(curproc->fd->fdlock);
 	err = uiomove((void*)buf, nbytes, &u);
 	if (err) {
-		kprintf("Cannot uiomove in sys_write\n");
 		lock_release(curproc->fd->fdlock);
 		return err;
 	}
@@ -273,7 +298,6 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 
 	err = VOP_WRITE(vn, &u);
 	if (err) {
-		kprintf("Cannot VOP_WRITE in sys_write\n");
 		lock_release(curproc->fd->fdlock);
 		return err;
 	}
@@ -288,23 +312,29 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 int
 sys_lseek(int fd, off_t pos, int whence, off_t* retval)
 {
+	lock_acquire(curproc->fd->fdlock);
 	int err = 0;
 	struct stat status;
-	int saved_offset = curproc->fd->fd_entry[fd]->offset;
-	if (fd >= __OPEN_MAX) {
+	
+	if (fd >= __OPEN_MAX || fd < 0) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
 	else if (curproc->fd->fd_entry[fd] == NULL) {
+		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
 	if (whence != 0 && whence != 1 && whence != 2) {
+		lock_release(curproc->fd->fdlock);
 		return EINVAL;
 	}
 	if (VOP_ISSEEKABLE(curproc->fd->fd_entry[fd]->vnode_ptr) != true) {
+		lock_release(curproc->fd->fdlock);
 		return ESPIPE;
 	}
 
-	lock_acquire(curproc->fd->fdlock);
+	int saved_offset = curproc->fd->fd_entry[fd]->offset;
+
 	switch (whence) {
 		case 0: 
 			curproc->fd->fd_entry[fd]->offset = pos;
