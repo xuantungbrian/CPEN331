@@ -24,7 +24,7 @@ struct fdtable *
 		return NULL;
 	}
 	for (int i = 0; i < 3; i++) {
-		fd->fd_entry[i] = kmalloc(sizeof(struct opentable));
+		fd->fd_entry[i] = kmalloc(sizeof(struct fd_state));
 		if (fd->fd_entry[i] == NULL) {
 			return NULL;
 		}

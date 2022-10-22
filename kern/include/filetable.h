@@ -6,19 +6,19 @@
 #include <synch.h>
 #include <proc.h>
 #include <limits.h>
-struct opentable{
-    int offset; //
-    int flags;
-    struct vnode* vnode_ptr;
+#include <types.h>
+
+struct fd_state {
+	off_t offset; 
+	int flags;
+	struct vnode* vnode_ptr;
 };
 
-struct fdtable{
-    struct opentable *fd_entry[__OPEN_MAX];
-    struct lock *fdlock;
+struct fdtable {
+	struct fd_state *fd_entry[__OPEN_MAX];
+	struct lock *fdlock;
 };
 struct fdtable *fd_create(void);
 
 #endif /* _FILETABLE_H_ */
-
-
 
