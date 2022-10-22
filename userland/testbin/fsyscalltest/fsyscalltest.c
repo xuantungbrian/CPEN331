@@ -23,6 +23,80 @@ static int openFDs[OPEN_MAX - 3 + 1];
  * This test makes sure that the underlying filetable implementation
  * allows us to open as many files as is allowed by the limit on the system.
  */
+
+static void
+test_dup2()
+{
+	static char writebuf[41] = 
+		"Twiddle dee dee, Twiddle dum dum.......\n";
+	static char readbuf[81];
+	const char *file;
+	int fd, dupfd, rv;
+
+	file = "testfile";
+
+	fd = open(file, O_WRONLY|O_CREAT|O_TRUNC, 0664);
+	if (fd<0) {
+		err(1, "%s: open for write", file);
+	}
+
+	//rv = write(fd, writebuf, 40);
+	//if (rv<0) {
+	//	err(1, "%s: write", file);
+	//}
+	
+	dupfd = fd + 1;
+	rv = dup2(fd, dupfd);
+	if (rv<0) {
+		err(1, "%s: dup2", file);
+	}
+	else if(rv != dupfd)
+	{
+		err(1, "dup2() returned %d, expected %d\n", rv, dupfd);
+	}
+
+
+	rv = close(fd);
+	if (rv<0) {
+		err(1, "%s: close (original fd)", file);
+	}
+
+	rv = close(dupfd);
+	if (rv<0) {
+		err(1, "%s: close (duplicate)", file);
+	}
+
+	fd = open(file, O_RDONLY);
+	if (fd<0) {
+		err(1, "%s: open for read", file);
+	}
+
+
+
+	rv = close(fd);
+	if (rv<0) {
+		err(1, "%s: close (3d time)", file);
+	}
+
+	/* ensure null termination */
+	readbuf[80] = 0;
+
+	/* Compare the second half */
+	if (strcmp(&readbuf[40], writebuf))
+	{
+		errx(1, "Buffer data mismatch!");
+	}
+
+	/* Put a null terminator after the expected
+	 * end of the first string and compare 
+	 */
+	readbuf[40] = 0;
+	if (strcmp(readbuf, writebuf)) 
+	{
+		errx(1, "Buffer data mismatch!");
+	}
+}
+
 static void
 test_openfile_limits()
 {
@@ -94,6 +168,7 @@ int
 main()
 {
 	test_openfile_limits();
+	test_dup2();
 	
 	return 0;
 }

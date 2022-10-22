@@ -61,5 +61,7 @@ int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 int sys_open(userptr_t filename, int flags, int32_t *retval);
 int sys_close(int fd);
+int sys_dup2(int oldfd, int newfd, int32_t *retval);
+int sys_chdir(const char *pathname);
 
 #endif /* _SYSCALL_H_ */

@@ -45,6 +45,7 @@ sys_open(userptr_t *filename, int flags, int32_t *retval)
             //lock_acquire(fd_lock);
             curproc->fd->fd_entry[i] = kmalloc(sizeof(struct opentable));
             if(curproc->fd->fd_entry[i] == NULL){
+                lock_release(curproc->fd->fdlock);
                 return 29; // return ENFILE
             }
             curproc->fd->fd_entry[i]->offset = 0;// confirm offset starts at 0
@@ -69,6 +70,7 @@ sys_close(int fd)
 	lock_acquire(curproc->fd->fdlock);
 	if (curproc->fd->fd_entry[fd] == NULL) {
 		kprintf("NO!!!!  %d\n", fd);
+        lock_release(curproc->fd->fdlock);
 		return 30; // Return EBDAF - refer to errno.h
 	}
 	vfs_close(curproc->fd->fd_entry[fd]->vnode_ptr);
@@ -77,4 +79,54 @@ sys_close(int fd)
 	lock_release(curproc->fd->fdlock);
 	kprintf("closeeeeeeeeeeeeeeeeeeee  %d\n", fd);
 	return 0;
+}
+
+int
+sys_dup2(int oldfd, int newfd, int32_t *retval)
+{   
+
+    lock_acquire(curproc->fd->fdlock);
+
+    if(curproc->fd->fd_entry[oldfd] == NULL || oldfd < 0 || newfd < 0 || oldfd > __OPEN_MAX || newfd > __OPEN_MAX){
+        lock_release(curproc->fd->fdlock);
+        return 30; // return EBADF
+    }
+    if(oldfd == newfd) {
+        lock_release(curproc->fd->fdlock);
+        return 0;
+    }
+    if(curproc->fd->fd_entry[newfd] != NULL){
+        sys_close(newfd);
+        lock_release(curproc->fd->fdlock);
+        return 0;
+    }
+    curproc->fd->fd_entry[newfd] = curproc->fd->fd_entry[oldfd];
+    curproc->fd->fd_entry[newfd]->vnode_ptr->vn_refcount++;
+
+    *retval = newfd;
+
+    lock_release(curproc->fd->fdlock);
+    kprintf("sys dup2  %d to %d\n", oldfd, newfd);
+    return 0;
+    
+}
+
+int
+sys_chdir(const char *pathname){
+
+    int err = 0;
+    char buf[PATH_MAX];
+    size_t *actual = NULL;
+	//struct opentable* entry;
+    err = copyinstr((const_userptr_t)pathname, buf, sizeof(buf), actual );
+    if(err){
+        return err;
+    }
+
+    err = vfs_chdir((char *) pathname);
+    if(err){
+        return err;
+    }
+    return 0;
+
 }
