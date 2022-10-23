@@ -104,8 +104,11 @@ sys_dup2(int oldfd, int newfd, int32_t *retval)
 {   
 
     lock_acquire(curproc->fd->fdlock);
-
-    if(curproc->fd->fd_entry[oldfd] == NULL || oldfd < 0 || newfd < 0 || oldfd > __OPEN_MAX || newfd > __OPEN_MAX){
+    if(oldfd < 0 || newfd < 0 || oldfd >= __OPEN_MAX || newfd >= __OPEN_MAX){
+        lock_release(curproc->fd->fdlock);
+        return 30; // return EBADF
+    }
+	if(curproc->fd->fd_entry[oldfd] == NULL ){
         lock_release(curproc->fd->fdlock);
         return 30; // return EBADF
     }
@@ -115,8 +118,8 @@ sys_dup2(int oldfd, int newfd, int32_t *retval)
     }
     if(curproc->fd->fd_entry[newfd] != NULL){
         sys_close(newfd);
-        lock_release(curproc->fd->fdlock);
-        return 0;
+        //lock_release(curproc->fd->fdlock);
+        //return 0;
     }
     curproc->fd->fd_entry[newfd] = curproc->fd->fd_entry[oldfd];
     curproc->fd->fd_entry[newfd]->vnode_ptr->vn_refcount++;
@@ -154,17 +157,33 @@ sys__getcwd( char *buf, size_t buflen, int32_t *retval){
 	struct iovec iov;
 	struct uio u;
 	size_t amount_read;
+	struct addrspace *addr = curproc->p_addrspace;
 
-	u.uio_offset = 0;
+	/*
+	char arg[ARG_MAX];
+	size_t *actual = NULL;
+*/
+	if (buf == NULL) {
+		return EFAULT;
+	}
+
+
 	iov.iov_ubase = (userptr_t)buf;
 	iov.iov_len = buflen;           
 	u.uio_iov = &iov;
 	u.uio_iovcnt = 1;
-	u.uio_resid = buflen;          
-	u.uio_segflg = UIO_SYSSPACE;
+	u.uio_resid = buflen;
+	u.uio_offset = 0;          
+	u.uio_segflg = UIO_USERSPACE;
 	u.uio_rw = UIO_READ;
-	u.uio_space = NULL;
+	u.uio_space = addr;
 
+/*
+	err = uiomove((void *)buf,buflen, &u);
+	if(err){
+		return err;
+	}
+	*/
 	err = vfs_getcwd(&u);
 	if(err){
 		return err;
@@ -232,6 +251,7 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 	iov.iov_len = buflen;
 
 	err = uiomove((void*)buf, amount_read, &u);
+
 	if (err) {
 		lock_release(curproc->fd->fdlock);
 		return err;
