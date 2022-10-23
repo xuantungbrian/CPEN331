@@ -70,7 +70,6 @@ sys_open(userptr_t *filename, int flags, int *retval)
 	}
 
 	*retval = i;
-	kprintf("Close file %d\n", i);
 	return err;
 }
 
@@ -87,7 +86,6 @@ sys_close(int fd)
 	//kfree(curproc->fd->fd_entry[fd]);
 	curproc->fd->fd_entry[fd] = NULL;
 	lock_release(curproc->fd->fdlock);
-	kprintf("Close file %d\n", fd);
 	return 0;
 }
 
@@ -118,7 +116,6 @@ sys_dup2(int oldfd, int newfd, int32_t *retval)
     *retval = newfd;
 
     lock_release(curproc->fd->fdlock);
-    kprintf("sys dup2  %d to %d\n", oldfd, newfd);
     return 0;
     
 }
