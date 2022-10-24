@@ -113,13 +113,12 @@ sys_dup2(int oldfd, int newfd, int32_t *retval)
         return 30; // return EBADF
     }
     if(oldfd == newfd) {
+		*retval = newfd;
         lock_release(curproc->fd->fdlock);
         return 0;
     }
     if(curproc->fd->fd_entry[newfd] != NULL){
         sys_close(newfd);
-        //lock_release(curproc->fd->fdlock);
-        //return 0;
     }
     curproc->fd->fd_entry[newfd] = curproc->fd->fd_entry[oldfd];
     curproc->fd->fd_entry[newfd]->vnode_ptr->vn_refcount++;
@@ -137,7 +136,6 @@ sys_chdir(const char *pathname){
     int err = 0;
     char buf[PATH_MAX];
     size_t *actual = NULL;
-	//struct opentable* entry;
     err = copyinstr((const_userptr_t)pathname, buf, sizeof(buf), actual );
     if(err){
         return err;
@@ -157,16 +155,14 @@ sys__getcwd( char *buf, size_t buflen, int32_t *retval){
 	struct iovec iov;
 	struct uio u;
 	size_t amount_read;
-	struct addrspace *addr = curproc->p_addrspace;
+	//struct addrspace *addr = curproc->p_addrspace;
 
-	/*
-	char arg[ARG_MAX];
-	size_t *actual = NULL;
-*/
 	if (buf == NULL) {
 		return EFAULT;
 	}
-
+    else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+buflen) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+buflen) >= USERSPACETOP) {
+		return EFAULT;
+	}
 
 	iov.iov_ubase = (userptr_t)buf;
 	iov.iov_len = buflen;           
@@ -174,16 +170,10 @@ sys__getcwd( char *buf, size_t buflen, int32_t *retval){
 	u.uio_iovcnt = 1;
 	u.uio_resid = buflen;
 	u.uio_offset = 0;          
-	u.uio_segflg = UIO_USERSPACE;
+	u.uio_segflg = UIO_SYSSPACE;
 	u.uio_rw = UIO_READ;
-	u.uio_space = addr;
+	u.uio_space = NULL;
 
-/*
-	err = uiomove((void *)buf,buflen, &u);
-	if(err){
-		return err;
-	}
-	*/
 	err = vfs_getcwd(&u);
 	if(err){
 		return err;
