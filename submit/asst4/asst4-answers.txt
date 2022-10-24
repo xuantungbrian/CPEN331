@@ -9,14 +9,14 @@ UIO_USERISPACE is user process code, while UIO_USERSPACE is user process data. W
 the memory block is in the kernel. (line 67-71 in kern/include/uio.h)
 
 3.Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
-
+The memory will go to the address specify in the iov_ubase of iov (an iovec declared in the function).
 
 4.In runprogram(), why is it important to call vfs_close() before going to usermode?
-Thread must close the file before going to user mode, so that other threads could open the file.
-If we don't close the file, the file would be never closed.
+Because usermode process shouldn't have access to that program file before using syscall.
 
 5.What function forces the processor to switch into usermode? Is this function machine dependent?
-mips_usermode (trap.c line 368) then calls to asm_usermode() (exception-mips1.S line 340). They are both machine dependent code.
+mips_usermode (trap.c line 368) then calls to asm_usermode() (exception-mips1.S line 340). Since asm_usermode() is machine dependent (using machine dependent (mips) instructions and registers), 
+mips_usermode is also machine dependent.
 
 6.In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
 copyin/copyout is defined in: kern/include/copyinout.h line 67-68
@@ -24,7 +24,7 @@ memmove is defined in: kern/include/lib.h line 152
 copyin and copyout cannot be implemented as simply as memmove, because they are arranged to prevent fatal kernel memory faults if invalid addresses are supplied by user-level code.
 
 7.What (briefly) is the purpose of userptr_t?
-
+Define userptr_t so it won't mix with other pointers. (line 86-87 in kern/include/types.h)
 
 8.What is the numerical value of the exception code for a MIPS system call?
 8 - from /src/kern/arch/mips/include/trapframe.h line 91
@@ -49,18 +49,17 @@ syscall (line 84 in userland/lib/libc/arch/mips/syscalls-mips.S).
 
 14.After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value. Thus, lseek() takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg2), and needs to return a 64-bit offset value. In void syscall(struct trapframe *tf) where will you find each of the three arguments (in which registers) and how will you return the 64-bit offset?
 a0 will hold 32-bit file handle.
-a1 and a2 will hold 64-bit offset.
-a3 will hold 32-bit whence.
+a2 and a3 will hold 64-bit offset. (a1 is left out because a0 with a1 or a2 with a3 will hold 64-bit arg and a1 cannot go with a2 to hold 64-bit arg)
+32-bit whence will be stored on the stack at tf->tf_sp+16
 64-bit offset will be returned in v0 and v1
 (line 64-68 in userland/lib/libc/arch/mips/syscalls-mips.S)
 
 15.As you were reading the code in runprogram.c and loadelf.c, you probably noticed how the kernel manipulates the files. Which kernel function is called to open a file? Which macro is called to read the file? What about to write a file? Which data structure is used in the kernel to represent an open file? 
-kernel function called to open a file: vfs_open (line 63 in runprogram.c)
-Macro called to read the file: O_RDONLY (line 63 in runprogram.c)
-Kernel function called to open a file: VOP_WRITE (its a macro, should we use the real function that does this?)
-(line 101-104 in kern/include/vnode.h)
+Kernel function called to open a file: vfs_open (line 63 in runprogram.c)
+Macro called to read the file: O_RDONLY (line 63 in runprogram.c) or O_RDWR
+Macro called to write a file: O_WRONLY or O_RDWR
 Data structure representing an open file: vnode (line 39 in kern/include/vnode.h)
 
 16.What is the purpose of VOP_INCREF and VOP_DECREF?
-VOP_INCREF and VOP_DECREF are used for reference count manipulation (increase reference and decrease reference
+VOP_INCREF and VOP_DECREF are used for vnode reference count manipulation (increase reference and decrease reference
 respectively) (line 261 in kern/include/vnode.h)
