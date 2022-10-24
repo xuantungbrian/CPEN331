@@ -9,7 +9,7 @@ UIO_USERISPACE is user process code, while UIO_USERSPACE is user process data. W
 the memory block is in the kernel. (line 67-71 in kern/include/uio.h)
 
 3.Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
-The memory will go to the address specify in the iov_ubase of iov (an iovec declared in the function).
+The memory read will go to the address specify in the iov_ubase of iov (an iovec declared in the function).
 
 4.In runprogram(), why is it important to call vfs_close() before going to usermode?
 Because usermode process shouldn't have access to that program file before using syscall.
@@ -28,7 +28,6 @@ Define userptr_t so it won't mix with other pointers. (line 86-87 in kern/includ
 
 8.What is the numerical value of the exception code for a MIPS system call?
 8 - from /src/kern/arch/mips/include/trapframe.h line 91
-
 
 9.How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
 4 bytes (kern/arch/mips/syscall/syscall.c, line 68-69 and 136-141)
