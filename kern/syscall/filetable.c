@@ -9,6 +9,7 @@
 #include <kern/fcntl.h>
 #include <vfs.h>
 
+
 /*
  * fd_create creates a file table in the process and initialize the first 3 file descriptor to stdin, stdout and stderr
  * fd_create return the pointer to the file table if success. On error, it will return NULL.
