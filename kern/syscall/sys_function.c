@@ -21,7 +21,12 @@
 #include <endian.h>
 #include <vm.h>
 
-
+/*
+Opens the file object named by the pathname filename.
+flags argument indicates how to open the file, 
+*retval argument is the address where we store the number of the newly opened file descriptor.
+On success, return 0 and store new file handle number in *retval. On error, return error number.
+ */
 int
 sys_open(userptr_t *filename, int flags, int *retval)
 {
@@ -72,6 +77,10 @@ sys_open(userptr_t *filename, int flags, int *retval)
 	return err;
 }
 
+/*
+Close the file handle fd.
+On success, return 0. On error, return error number.
+ */
 int
 sys_close(int fd)
 {
@@ -99,6 +108,11 @@ sys_close(int fd)
 	return 0;
 }
 
+/*
+clones the file handle oldfd onto the file handle newfd. If newfd names an already-open file, that file is closed.(https://people.ece.ubc.ca/~os161/man/syscall/dup2.html)
+*retval argument is the address where we store the number of the newly cloned file descriptor newfd.
+On success returns 0 and store newfd in *retval. On error, return error number.
+ */
 int
 sys_dup2(int oldfd, int newfd, int32_t *retval)
 {   
@@ -130,6 +144,10 @@ sys_dup2(int oldfd, int newfd, int32_t *retval)
     
 }
 
+/*
+The current directory of the current process is set to the directory named by pathname.(https://people.ece.ubc.ca/~os161/man/syscall/chdir.html)
+On success, return 0. On error, return error number.
+ */
 int
 sys_chdir(const char *pathname){
 
@@ -148,7 +166,11 @@ sys_chdir(const char *pathname){
     return 0;
 
 }
-
+/*
+The name of the current directory is computed and stored in buf, an area of size buflen. The length of data actually stored, which must be non-negative, is returned.(https://people.ece.ubc.ca/~os161/man/syscall/__getcwd.html)
+On success, store the length of the data in *retval and return 0.
+On error, return error number.
+ */
 int
 sys__getcwd( char *buf, size_t buflen, int32_t *retval){
 	int err = 0;
