@@ -189,23 +189,23 @@ int
 sys_read(int fd, void *buf, size_t buflen, int* retval)
 {
 	lock_acquire(curproc->fd->fdlock);
-	if (fd >= __OPEN_MAX || fd < 0) {
+	if (fd >= __OPEN_MAX || fd < 0) { //Check invalid fd
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	else if (curproc->fd->fd_entry[fd] == NULL) {
+	else if (curproc->fd->fd_entry[fd] == NULL) { //Check if fd associated with a vnode
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	else if (curproc->fd->fd_entry[fd]->flags == O_WRONLY) {
+	else if (curproc->fd->fd_entry[fd]->flags == O_WRONLY) { //Check the flags of fd
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	if (buf == NULL) {
+	if (buf == NULL) { //Check if buf argument is NULL
 		lock_release(curproc->fd->fdlock);
 		return EFAULT;
 	}
-	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+buflen) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+buflen) >= USERSPACETOP) {
+	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+buflen) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+buflen) >= USERSPACETOP) { //Check if buf argument is invalid
 		lock_release(curproc->fd->fdlock);
 		return EFAULT;
 	}
@@ -227,6 +227,7 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 	u.uio_rw = UIO_READ;
 	u.uio_space = NULL;
 
+	//Use uio as a buffer and read from vnode to uio
 	err = VOP_READ(vn, &u);
 	if (err) {
 		lock_release(curproc->fd->fdlock);
@@ -240,6 +241,7 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 	iov.iov_kbase = rd_buf;
 	iov.iov_len = buflen;
 
+	//Write data from uio to buf pointer
 	err = uiomove((void*)buf, amount_read, &u);
 
 	if (err) {
@@ -254,26 +256,26 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 }
 
 int
-sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need to check for err, add lock
+sys_write(int fd, const void *buf, size_t nbytes, int* retval) 
 {
 	lock_acquire(curproc->fd->fdlock);
-	if (fd >= __OPEN_MAX || fd < 0) {
+	if (fd >= __OPEN_MAX || fd < 0) { //Check invalid fd
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	else if (curproc->fd->fd_entry[fd] == NULL) {
+	else if (curproc->fd->fd_entry[fd] == NULL) { //Check if fd associated with a vnode
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	else if (curproc->fd->fd_entry[fd]->flags == O_RDONLY) {
+	else if (curproc->fd->fd_entry[fd]->flags == O_RDONLY) { //Check the flags of fd
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	if (buf == NULL) {
+	if (buf == NULL) { //Check if buf argument is NULL
 		lock_release(curproc->fd->fdlock);
 		return EFAULT;
 	}
-	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+nbytes) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+nbytes) >= USERSPACETOP) {
+	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+nbytes) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+nbytes) >= USERSPACETOP) { //Check if buf argument is invalid
 		lock_release(curproc->fd->fdlock);
 		return EFAULT;
 	}
@@ -294,6 +296,7 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 	u.uio_rw = UIO_READ;
 	u.uio_space = NULL;
 
+	//Use uio as a buffer and read data from userland into uio
 	err = uiomove((void*)buf, nbytes, &u);
 	if (err) {
 		lock_release(curproc->fd->fdlock);
@@ -303,9 +306,10 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval) //definitely need
 	iov.iov_kbase = wr_buf;
 	iov.iov_len = nbytes;
 	u.uio_rw = UIO_WRITE;
-	u.uio_offset = curproc->fd->fd_entry[fd]->offset; //not sure if this is the offset of the UIO or the vnode 
+	u.uio_offset = curproc->fd->fd_entry[fd]->offset;  
 	u.uio_resid = nbytes;
 
+	//Write data from uio to vnode
 	err = VOP_WRITE(vn, &u);
 	if (err) {
 		lock_release(curproc->fd->fdlock);
@@ -326,19 +330,19 @@ sys_lseek(int fd, off_t pos, int whence, off_t* retval)
 	int err = 0;
 	struct stat status;
 	
-	if (fd >= __OPEN_MAX || fd < 0) {
+	if (fd >= __OPEN_MAX || fd < 0) { //Check invalid fd
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	else if (curproc->fd->fd_entry[fd] == NULL) {
+	else if (curproc->fd->fd_entry[fd] == NULL) { //Check if fd associated with a vnode
 		lock_release(curproc->fd->fdlock);
 		return EBADF;
 	}
-	if (whence != 0 && whence != 1 && whence != 2) {
+	if (whence != 0 && whence != 1 && whence != 2) { //Check for invalid whence
 		lock_release(curproc->fd->fdlock);
 		return EINVAL;
 	}
-	if (VOP_ISSEEKABLE(curproc->fd->fd_entry[fd]->vnode_ptr) != true) {
+	if (VOP_ISSEEKABLE(curproc->fd->fd_entry[fd]->vnode_ptr) != true) { //Check if the file is seekable
 		lock_release(curproc->fd->fdlock);
 		return ESPIPE;
 	}
