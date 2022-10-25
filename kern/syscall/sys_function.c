@@ -185,6 +185,12 @@ sys__getcwd( char *buf, size_t buflen, int32_t *retval){
 	}
 }
 
+/*
+ * sys_read reads up to buflen bytes from the file specified by fd.
+ * Argument buf indicates the space to store.
+ * The amount of bytes read will be stored in retval
+ * sys_read will return 0 if success. On error, it will return the error number.
+ */
 int
 sys_read(int fd, void *buf, size_t buflen, int* retval)
 {
@@ -255,6 +261,12 @@ sys_read(int fd, void *buf, size_t buflen, int* retval)
 	return err;
 }
 
+/*
+ * sys_write writes up to nbytes bytes to the file specified by fd.
+ * Argument buf indicates the space storing bytes to be written in the file.
+ * The amount of bytes written will be stored in retval
+ * sys_write will return 0 if success. On error, it will return the error number.
+ */
 int
 sys_write(int fd, const void *buf, size_t nbytes, int* retval) 
 {
@@ -323,6 +335,12 @@ sys_write(int fd, const void *buf, size_t nbytes, int* retval)
 	return err;
 }
 
+/*
+ * sys_lseek alters the current seek position of the file handle filehandle, seeking to a new position based on pos and whence.
+ * fd is used to specified the file.
+ * The new position will be stored in retval
+ * sys_lseek will return 0 if success. On error, it will return the error number.
+ */
 int
 sys_lseek(int fd, off_t pos, int whence, off_t* retval)
 {
