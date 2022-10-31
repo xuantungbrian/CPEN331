@@ -57,6 +57,10 @@ struct proc {
 	struct vnode *p_cwd;		/* current working directory */
 	struct filetable *p_filetable;	/* table of open files */
 
+	/*pid*/
+	struct pid_table *pid_table;
+	pid_t pid_num;
+
 	/* add more material here as needed */
 };
 

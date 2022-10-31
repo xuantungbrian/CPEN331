@@ -379,3 +379,9 @@ sys___getcwd(userptr_t buf, size_t buflen, int *retval)
 	*retval = buflen - useruio.uio_resid;
 	return 0;
 }
+
+int 
+sys_getpid(int *retval) { //Should this need lock?
+	*retval = curproc->pid_num;
+	return 0; //should add errors
+}
