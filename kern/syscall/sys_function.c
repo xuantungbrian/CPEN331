@@ -1,401 +1,381 @@
+/*
+ * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009, 2014
+ *	The President and Fellows of Harvard College.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE UNIVERSITY OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+/*
+ * File-related system call implementations.
+ */
+
 #include <types.h>
 #include <kern/errno.h>
+#include <kern/fcntl.h>
+#include <kern/limits.h>
+#include <kern/seek.h>
+#include <kern/stat.h>
 #include <lib.h>
 #include <uio.h>
 #include <proc.h>
 #include <current.h>
-#include <addrspace.h>
-#include <vnode.h>
-#include <elf.h>
-#include <limits.h>
-#include <vfs.h>
-#include <fs.h>
-#include <test.h>
-#include <copyinout.h>
 #include <synch.h>
+#include <copyinout.h>
+#include <vfs.h>
+#include <vnode.h>
+#include <openfile.h>
 #include <filetable.h>
-#include <proc.h>
-#include <sys_function.h>
-#include <kern/fcntl.h>
-#include <kern/stat.h>
-#include <endian.h>
-#include <vm.h>
+#include <syscall.h>
 
-
+/*
+ * open() - get the path with copyinstr, then use openfile_open and
+ * filetable_place to do the real work.
+ */
 int
-sys_open(userptr_t *filename, int flags, int *retval)
+sys_open(const_userptr_t upath, int flags, mode_t mode, int *retval)
 {
-	int rw_flags = flags & O_ACCMODE;
-	if (rw_flags != O_RDONLY && rw_flags != O_WRONLY && rw_flags != O_RDWR) {
-		lock_release(curproc->fd->fdlock);
+	const int allflags =
+		O_ACCMODE | O_CREAT | O_EXCL | O_TRUNC | O_APPEND | O_NOCTTY;
+
+	char *kpath;
+	struct openfile *file;
+	int result;
+
+	if ((flags & allflags) != flags) {
+		/* unknown flags were set */
 		return EINVAL;
 	}
-	struct vnode* vn;
-	int i;
-	int err = 0;
-	char buf[PATH_MAX];
-	size_t *actual = NULL;
 
-	lock_acquire(curproc->fd->fdlock);
-	err = copyinstr((const_userptr_t)filename, buf, sizeof(buf), actual); 
-	if (err) {
-		lock_release(curproc->fd->fdlock);
-		return err;
+	kpath = kmalloc(PATH_MAX);
+	if (kpath == NULL) {
+		return ENOMEM;
 	}
 
-	err = vfs_open(buf, flags, 0, &vn); 
-	if (err) { 
-		lock_release(curproc->fd->fdlock);
-		return err;
+	/* Get the pathname. */
+	result = copyinstr(upath, kpath, PATH_MAX, NULL);
+	if (result) {
+		kfree(kpath);
+		return result;
 	}
 
-	for (i = 0; i < __OPEN_MAX; i++) { 
-		if (curproc->fd->fd_entry[i] == NULL) {
-			curproc->fd->fd_entry[i] = kmalloc(sizeof(struct fd_state));
-			if (curproc->fd->fd_entry[i] == NULL) {
-				lock_release(curproc->fd->fdlock);
-				return ENFILE; 
-			}
-			curproc->fd->fd_entry[i]->offset = 0;
-			curproc->fd->fd_entry[i]->vnode_ptr = vn;
-			curproc->fd->fd_entry[i]->flags = rw_flags;
-			break;
-		}
+	/*
+	 * Open the file. Code lower down (in vfs_open) checks that
+	 * flags & O_ACCMODE is a valid value.
+	 */
+	result = openfile_open(kpath, flags, mode, &file);
+	if (result) {
+		kfree(kpath);
+		return result;
+	}
+	kfree(kpath);
+
+	/*
+	 * Place the file in our process's file table, which gives us
+	 * the result file descriptor.
+	 */
+	result = filetable_place(curproc->p_filetable, file, retval);
+	if (result) {
+		openfile_decref(file);
+		return result;
 	}
 
-	lock_release(curproc->fd->fdlock);
-	if (i == __OPEN_MAX) {
-		return EMFILE;
-	}
-
-	*retval = i;
-	return err;
-}
-
-int
-sys_close(int fd)
-{
-	int i;
-	lock_acquire(curproc->fd->fdlock);
-	if (fd >= __OPEN_MAX || fd < 0) {
-		lock_release(curproc->fd->fdlock);
-		return EBADF; 
-	}
-	if (curproc->fd->fd_entry[fd] == NULL) {
-		lock_release(curproc->fd->fdlock);
-		return EBADF; 
-	}
-	vfs_close(curproc->fd->fd_entry[fd]->vnode_ptr);
-	for (i=0; i<__OPEN_MAX; i++) {
-		if (curproc->fd->fd_entry[fd] == curproc->fd->fd_entry[i]) {
-			break;
-		}
-	}
-	if (i == __OPEN_MAX) {
-		kfree(curproc->fd->fd_entry[fd]);
-	}
-	curproc->fd->fd_entry[fd] = NULL;
-	lock_release(curproc->fd->fdlock);
 	return 0;
 }
 
+/*
+ * Common logic for read and write.
+ *
+ * Look up the fd, then use VOP_READ or VOP_WRITE.
+ */
+static
 int
-sys_dup2(int oldfd, int newfd, int32_t *retval)
-{   
-
-    lock_acquire(curproc->fd->fdlock);
-    if(oldfd < 0 || newfd < 0 || oldfd >= __OPEN_MAX || newfd >= __OPEN_MAX){
-        lock_release(curproc->fd->fdlock);
-        return 30; // return EBADF
-    }
-	if(curproc->fd->fd_entry[oldfd] == NULL ){
-        lock_release(curproc->fd->fdlock);
-        return 30; // return EBADF
-    }
-    if(oldfd == newfd) {
-		*retval = newfd;
-        lock_release(curproc->fd->fdlock);
-        return 0;
-    }
-    if(curproc->fd->fd_entry[newfd] != NULL){
-        sys_close(newfd);
-    }
-    curproc->fd->fd_entry[newfd] = curproc->fd->fd_entry[oldfd];
-    curproc->fd->fd_entry[newfd]->vnode_ptr->vn_refcount++;
-
-    *retval = newfd;
-
-    lock_release(curproc->fd->fdlock);
-    return 0;
-    
-}
-
-int
-sys_chdir(const char *pathname){
-
-    int err = 0;
-    char buf[PATH_MAX];
-    size_t *actual = NULL;
-    err = copyinstr((const_userptr_t)pathname, buf, sizeof(buf), actual );
-    if(err){
-        return err;
-    }
-
-    err = vfs_chdir((char *) pathname);
-    if(err){
-        return err;
-    }
-    return 0;
-
-}
-
-int
-sys__getcwd( char *buf, size_t buflen, int32_t *retval){
-	int err = 0;
+sys_readwrite(int fd, userptr_t buf, size_t size, enum uio_rw rw,
+	      int badaccmode, ssize_t *retval)
+{
+	struct openfile *file;
+	bool locked;
+	off_t pos;
 	struct iovec iov;
-	struct uio u;
-	size_t amount_read;
-	//struct addrspace *addr = curproc->p_addrspace;
+	struct uio useruio;
+	int result;
 
-	if (buf == NULL) {
-		return EFAULT;
-	}
-    else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+buflen) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+buflen) >= USERSPACETOP) {
-		return EFAULT;
+	/* better be a valid file descriptor */
+	result = filetable_get(curproc->p_filetable, fd, &file);
+	if (result) {
+		return result;
 	}
 
-	iov.iov_ubase = (userptr_t)buf;
-	iov.iov_len = buflen;           
-	u.uio_iov = &iov;
-	u.uio_iovcnt = 1;
-	u.uio_resid = buflen;
-	u.uio_offset = 0;          
-	u.uio_segflg = UIO_SYSSPACE;
-	u.uio_rw = UIO_READ;
-	u.uio_space = NULL;
+	/* Only lock the seek position if we're really using it. */
+	locked = VOP_ISSEEKABLE(file->of_vnode);
+	if (locked) {
+		lock_acquire(file->of_offsetlock);
+		pos = file->of_offset;
+	}
+	else {
+		pos = 0;
+	}
 
-	err = vfs_getcwd(&u);
-	if(err){
-		return err;
+	if (file->of_accmode == badaccmode) {
+		result = EBADF;
+		goto fail;
 	}
-	else{
-		amount_read = buflen - u.uio_resid;
-		*retval = (int32_t)amount_read;
-		return err;
+
+	/* set up a uio with the buffer, its size, and the current offset */
+	uio_uinit(&iov, &useruio, buf, size, pos, rw);
+
+	/* do the read or write */
+	result = (rw == UIO_READ) ?
+		VOP_READ(file->of_vnode, &useruio) :
+		VOP_WRITE(file->of_vnode, &useruio);
+	if (result) {
+		goto fail;
 	}
+
+	if (locked) {
+		/* set the offset to the updated offset in the uio */
+		file->of_offset = useruio.uio_offset;
+		lock_release(file->of_offsetlock);
+	}
+
+	filetable_put(curproc->p_filetable, fd, file);
+
+	/*
+	 * The amount read (or written) is the original buffer size,
+	 * minus how much is left in it.
+	 */
+	*retval = size - useruio.uio_resid;
+
+	return 0;
+
+fail:
+	if (locked) {
+		lock_release(file->of_offsetlock);
+	}
+	filetable_put(curproc->p_filetable, fd, file);
+	return result;
 }
 
 /*
- * sys_read reads up to buflen bytes from the file specified by fd.
- * Argument buf indicates the space to store.
- * The amount of bytes read will be stored in retval
- * sys_read will return 0 if success. On error, it will return the error number.
+ * read() - use sys_readwrite
  */
 int
-sys_read(int fd, void *buf, size_t buflen, int* retval)
+sys_read(int fd, userptr_t buf, size_t size, int *retval)
 {
-	lock_acquire(curproc->fd->fdlock);
-	if (fd >= __OPEN_MAX || fd < 0) { //Check invalid fd
-		lock_release(curproc->fd->fdlock);
-		return EBADF;
-	}
-	else if (curproc->fd->fd_entry[fd] == NULL) { //Check if fd associated with a vnode
-		lock_release(curproc->fd->fdlock);
-		return EBADF;
-	}
-	else if (curproc->fd->fd_entry[fd]->flags == O_WRONLY) { //Check the flags of fd
-		lock_release(curproc->fd->fdlock);
-		return EBADF;
-	}
-	if (buf == NULL) { //Check if buf argument is NULL
-		lock_release(curproc->fd->fdlock);
-		return EFAULT;
-	}
-	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+buflen) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+buflen) >= USERSPACETOP) { //Check if buf argument is invalid
-		lock_release(curproc->fd->fdlock);
-		return EFAULT;
-	}
-
-	struct vnode *vn = curproc->fd->fd_entry[fd]->vnode_ptr;
-	int err = 0;
-	struct iovec iov;
-	struct uio u;
-	char rd_buf[buflen];
-	size_t amount_read;
-
-	iov.iov_kbase = rd_buf;
-	iov.iov_len = buflen;           
-	u.uio_iov = &iov;
-	u.uio_iovcnt = 1;
-	u.uio_resid = buflen;          
-	u.uio_offset = curproc->fd->fd_entry[fd]->offset;
-	u.uio_segflg = UIO_SYSSPACE;
-	u.uio_rw = UIO_READ;
-	u.uio_space = NULL;
-
-	//Use uio as a buffer and read from vnode to uio
-	err = VOP_READ(vn, &u);
-	if (err) {
-		lock_release(curproc->fd->fdlock);
-		return err;
-	}
-
-	amount_read = buflen - u.uio_resid;
-	u.uio_rw = UIO_WRITE;
-	u.uio_offset = curproc->fd->fd_entry[fd]->offset;
-	u.uio_resid = amount_read;
-	iov.iov_kbase = rd_buf;
-	iov.iov_len = buflen;
-
-	//Write data from uio to buf pointer
-	err = uiomove((void*)buf, amount_read, &u);
-
-	if (err) {
-		lock_release(curproc->fd->fdlock);
-		return err;
-	}
-	
-	curproc->fd->fd_entry[fd]->offset = curproc->fd->fd_entry[fd]->offset + amount_read;
-	lock_release(curproc->fd->fdlock);
-	*retval = (int)amount_read;
-	return err;
+	return sys_readwrite(fd, buf, size, UIO_READ, O_WRONLY, retval);
 }
 
 /*
- * sys_write writes up to nbytes bytes to the file specified by fd.
- * Argument buf indicates the space storing bytes to be written in the file.
- * The amount of bytes written will be stored in retval
- * sys_write will return 0 if success. On error, it will return the error number.
+ * write() - use sys_readwrite
  */
 int
-sys_write(int fd, const void *buf, size_t nbytes, int* retval) 
+sys_write(int fd, userptr_t buf, size_t size, int *retval)
 {
-	lock_acquire(curproc->fd->fdlock);
-	if (fd >= __OPEN_MAX || fd < 0) { //Check invalid fd
-		lock_release(curproc->fd->fdlock);
-		return EBADF;
-	}
-	else if (curproc->fd->fd_entry[fd] == NULL) { //Check if fd associated with a vnode
-		lock_release(curproc->fd->fdlock);
-		return EBADF;
-	}
-	else if (curproc->fd->fd_entry[fd]->flags == O_RDONLY) { //Check the flags of fd
-		lock_release(curproc->fd->fdlock);
-		return EBADF;
-	}
-	if (buf == NULL) { //Check if buf argument is NULL
-		lock_release(curproc->fd->fdlock);
-		return EFAULT;
-	}
-	else if ((vaddr_t)buf == 0x40000000 || (vaddr_t)(buf+nbytes) == 0x40000000 || (vaddr_t)buf >= USERSPACETOP || (vaddr_t)(buf+nbytes) >= USERSPACETOP) { //Check if buf argument is invalid
-		lock_release(curproc->fd->fdlock);
-		return EFAULT;
-	}
-	
-	struct vnode *vn = curproc->fd->fd_entry[fd]->vnode_ptr;
-	int err = 0;
-	struct iovec iov;
-	struct uio u;
-	char wr_buf[nbytes];
-
-	iov.iov_kbase = wr_buf;
-	iov.iov_len = nbytes;           
-	u.uio_iov = &iov;
-	u.uio_iovcnt = 1;
-	u.uio_resid = nbytes;         
-	u.uio_offset = curproc->fd->fd_entry[fd]->offset;
-	u.uio_segflg = UIO_SYSSPACE;
-	u.uio_rw = UIO_READ;
-	u.uio_space = NULL;
-
-	//Use uio as a buffer and read data from userland into uio
-	err = uiomove((void*)buf, nbytes, &u);
-	if (err) {
-		lock_release(curproc->fd->fdlock);
-		return err;
-	}
-
-	iov.iov_kbase = wr_buf;
-	iov.iov_len = nbytes;
-	u.uio_rw = UIO_WRITE;
-	u.uio_offset = curproc->fd->fd_entry[fd]->offset;  
-	u.uio_resid = nbytes;
-
-	//Write data from uio to vnode
-	err = VOP_WRITE(vn, &u);
-	if (err) {
-		lock_release(curproc->fd->fdlock);
-		return err;
-	}
-
-	*retval = (int)(u.uio_offset - curproc->fd->fd_entry[fd]->offset);
-	curproc->fd->fd_entry[fd]->offset = u.uio_offset;
-	lock_release(curproc->fd->fdlock);
-
-	return err;
+	return sys_readwrite(fd, buf, size, UIO_WRITE, O_RDONLY, retval);
 }
 
 /*
- * sys_lseek alters the current seek position of the file handle filehandle, seeking to a new position based on pos and whence.
- * fd is used to specified the file.
- * The new position will be stored in retval
- * sys_lseek will return 0 if success. On error, it will return the error number.
+ * close() - remove from the file table.
  */
 int
-sys_lseek(int fd, off_t pos, int whence, off_t* retval)
+sys_close(int fd)
 {
-	lock_acquire(curproc->fd->fdlock);
-	int err = 0;
-	struct stat status;
-	
-	if (fd >= __OPEN_MAX || fd < 0) { //Check invalid fd
-		lock_release(curproc->fd->fdlock);
+	struct filetable *ft;
+	struct openfile *file;
+
+	ft = curproc->p_filetable;
+
+	/* check if the file's in range before calling placeat */
+	if (!filetable_okfd(ft, fd)) {
 		return EBADF;
 	}
-	else if (curproc->fd->fd_entry[fd] == NULL) { //Check if fd associated with a vnode
-		lock_release(curproc->fd->fdlock);
+
+	/* place null in the filetable and get the file previously there */
+	filetable_placeat(ft, NULL, fd, &file);
+
+	if (file == NULL) {
+		/* oops, it wasn't open, that's an error */
 		return EBADF;
 	}
-	if (whence != 0 && whence != 1 && whence != 2) { //Check for invalid whence
-		lock_release(curproc->fd->fdlock);
-		return EINVAL;
+
+	/* drop the reference */
+	openfile_decref(file);
+	return 0;
+}
+
+/*
+ * lseek() - manipulate the seek position.
+ */
+int
+sys_lseek(int fd, off_t offset, int whence, off_t *retval)
+{
+	struct stat info;
+	struct openfile *file;
+	int result;
+
+	/* Get the open file. */
+	result = filetable_get(curproc->p_filetable, fd, &file);
+	if (result) {
+		return result;
 	}
-	if (VOP_ISSEEKABLE(curproc->fd->fd_entry[fd]->vnode_ptr) != true) { //Check if the file is seekable
-		lock_release(curproc->fd->fdlock);
+
+	/* If it's not a seekable object, forget about it. */
+	if (!VOP_ISSEEKABLE(file->of_vnode)) {
+		filetable_put(curproc->p_filetable, fd, file);
 		return ESPIPE;
 	}
 
-	int saved_offset = curproc->fd->fd_entry[fd]->offset;
+	/* Lock the seek position. */
+	lock_acquire(file->of_offsetlock);
 
+	/* Compute the new position. */
 	switch (whence) {
-		case 0: 
-			curproc->fd->fd_entry[fd]->offset = pos;
-			break;
-
-		case 1:
-			curproc->fd->fd_entry[fd]->offset = curproc->fd->fd_entry[fd]->offset + pos;
-			break;
-
-		case 2:
-			err = VOP_STAT(curproc->fd->fd_entry[fd]->vnode_ptr, &status);
-			if (err) {
-				lock_release(curproc->fd->fdlock);
-				return err;
-			}
-			curproc->fd->fd_entry[fd]->offset = status.st_size + pos;
-			break;
-	}
-	lock_release(curproc->fd->fdlock);
-
-	if (curproc->fd->fd_entry[fd]->offset >= 0) {
-		*retval = curproc->fd->fd_entry[fd]->offset;
-	}
-	else {
-		curproc->fd->fd_entry[fd]->offset = saved_offset;
-		*retval = saved_offset;
+	    case SEEK_SET:
+		*retval = offset;
+		break;
+	    case SEEK_CUR:
+		*retval = file->of_offset + offset;
+		break;
+	    case SEEK_END:
+		result = VOP_STAT(file->of_vnode, &info);
+		if (result) {
+			lock_release(file->of_offsetlock);
+			filetable_put(curproc->p_filetable, fd, file);
+			return result;
+		}
+		*retval = info.st_size + offset;
+		break;
+	    default:
+		lock_release(file->of_offsetlock);
+		filetable_put(curproc->p_filetable, fd, file);
 		return EINVAL;
 	}
 
-	return err;
+	/* If the resulting position is negative (which is invalid) fail. */
+	if (*retval < 0) {
+		lock_release(file->of_offsetlock);
+		filetable_put(curproc->p_filetable, fd, file);
+		return EINVAL;
+	}
+
+	/* Success -- update the file structure with the new position. */
+	file->of_offset = *retval;
+
+	lock_release(file->of_offsetlock);
+	filetable_put(curproc->p_filetable, fd, file);
+
+	return 0;
 }
 
+/*
+ * dup2() - clone a file descriptor.
+ */
+int
+sys_dup2(int oldfd, int newfd, int *retval)
+{
+	struct filetable *ft;
+	struct openfile *oldfdfile, *newfdfile;
+	int result;
+
+	ft = curproc->p_filetable;
+
+	if (!filetable_okfd(ft, newfd)) {
+		return EBADF;
+	}
+
+	/* dup2'ing an fd to itself automatically succeeds (BSD semantics) */
+	if (oldfd == newfd) {
+		*retval = newfd;
+		return 0;
+	}
+
+	/* get the file */
+	result = filetable_get(ft, oldfd, &oldfdfile);
+	if (result) {
+		return result;
+	}
+
+	/* make another reference and return the fd */
+	openfile_incref(oldfdfile);
+	filetable_put(ft, oldfd, oldfdfile);
+
+	/* place it */
+	filetable_placeat(ft, oldfdfile, newfd, &newfdfile);
+
+	/* if there was a file already there, drop that reference */
+	if (newfdfile != NULL) {
+		openfile_decref(newfdfile);
+	}
+
+	/* return newfd */
+	*retval = newfd;
+	return 0;
+}
+
+/*
+ * chdir() - change directory. Send the path off to the vfs layer.
+ */
+int
+sys_chdir(const_userptr_t path)
+{
+	char *pathbuf;
+	int result;
+
+	pathbuf = kmalloc(PATH_MAX);
+	if (pathbuf == NULL) {
+		return ENOMEM;
+	}
+
+	result = copyinstr(path, pathbuf, PATH_MAX, NULL);
+	if (result) {
+		kfree(pathbuf);
+		return result;
+	}
+
+	result = vfs_chdir(pathbuf);
+	kfree(pathbuf);
+	return result;
+}
+
+/*
+ * __getcwd() - get current directory. Make a uio and get the data
+ * from the VFS code.
+ */
+int
+sys___getcwd(userptr_t buf, size_t buflen, int *retval)
+{
+	struct iovec iov;
+	struct uio useruio;
+	int result;
+
+	uio_uinit(&iov, &useruio, buf, buflen, 0, UIO_READ);
+
+	result = vfs_getcwd(&useruio);
+	if (result) {
+		return result;
+	}
+
+	*retval = buflen - useruio.uio_resid;
+	return 0;
+}

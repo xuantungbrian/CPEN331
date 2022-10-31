@@ -30,7 +30,6 @@
 #ifndef _SYSCALL_H_
 #define _SYSCALL_H_
 
-
 #include <cdefs.h> /* for __DEAD */
 struct trapframe; /* from <machine/trapframe.h> */
 
@@ -44,7 +43,6 @@ void syscall(struct trapframe *tf);
  * Support functions.
  */
 
-
 /* Helper for fork(). You write this. */
 void enter_forked_process(struct trapframe *tf);
 
@@ -55,17 +53,23 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.
+ *
+ * Note that we use userptr_t's for userspace pointers, so that there
+ * isn't any confusion about what space the pointers are in.
  */
 
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
-int sys_open(userptr_t filename, int flags, int32_t *retval);
-int sys_close(int fd);
-int sys_dup2(int oldfd, int newfd, int32_t *retval);
-int sys_chdir(const char *pathname);
 
-int sys_read(int fd, void *buf, size_t buflen, int* retval);
-int sys_write(int fd, const void *buf, size_t nbytes, int* retval);
-int sys__getcwd(char *buf, size_t buflen, int32_t *retval);
-int sys_lseek(int fd, off_t pos, int whence, off_t* retval);
+int sys_open(const_userptr_t filename, int flags, mode_t mode, int *retval);
+int sys_dup2(int oldfd, int newfd, int *retval);
+int sys_close(int fd);
+int sys_read(int fd, userptr_t buf, size_t size, int *retval);
+int sys_write(int fd, userptr_t buf, size_t size, int *retval);
+int sys_lseek(int fd, off_t offset, int code, off_t *retval);
+
+int sys_chdir(const_userptr_t path);
+int sys___getcwd(userptr_t buf, size_t buflen, int *retval);
+
+
 #endif /* _SYSCALL_H_ */
