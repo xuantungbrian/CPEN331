@@ -30,60 +30,60 @@
 #include <types.h>
 #include <kern/errno.h>
 #include <kern/syscall.h>
+#include <endian.h>
 #include <lib.h>
 #include <mips/trapframe.h>
 #include <thread.h>
 #include <current.h>
-#include <syscall.h>
-#include <endian.h>
 #include <copyinout.h>
+#include <syscall.h>
+#include <addrspace.h>
 
 
- /*
-  * System call dispatcher.
-  *
-  * A pointer to the trapframe created during exception entry (in
-  * exception-*.S) is passed in.
-  *
-  * The calling conventions for syscalls are as follows: Like ordinary
-  * function calls, the first 4 32-bit arguments are passed in the 4
-  * argument registers a0-a3. 64-bit arguments are passed in *aligned*
-  * pairs of registers, that is, either a0/a1 or a2/a3. This means that
-  * if the first argument is 32-bit and the second is 64-bit, a1 is
-  * unused.
-  *
-  * This much is the same as the calling conventions for ordinary
-  * function calls. In addition, the system call number is passed in
-  * the v0 register.
-  *
-  * On successful return, the return value is passed back in the v0
-  * register, or v0 and v1 if 64-bit. This is also like an ordinary
-  * function call, and additionally the a3 register is also set to 0 to
-  * indicate success.
-  *
-  * On an error return, the error code is passed back in the v0
-  * register, and the a3 register is set to 1 to indicate failure.
-  * (Userlevel code takes care of storing the error code in errno and
-  * returning the value -1 from the actual userlevel syscall function.
-  * See src/user/lib/libc/arch/mips/syscalls-mips.S and related files.)
-  *
-  * Upon syscall return the program counter stored in the trapframe
-  * must be incremented by one instruction; otherwise the exception
-  * return code will restart the "syscall" instruction and the system
-  * call will repeat forever.
-  *
-  * If you run out of registers (which happens quickly with 64-bit
-  * values) further arguments must be fetched from the user-level
-  * stack, starting at sp+16 to skip over the slots for the
-  * registerized values, with copyin().
-  */
+/*
+ * System call dispatcher.
+ *
+ * A pointer to the trapframe created during exception entry (in
+ * exception-*.S) is passed in.
+ *
+ * The calling conventions for syscalls are as follows: Like ordinary
+ * function calls, the first 4 32-bit arguments are passed in the 4
+ * argument registers a0-a3. 64-bit arguments are passed in *aligned*
+ * pairs of registers, that is, either a0/a1 or a2/a3. This means that
+ * if the first argument is 32-bit and the second is 64-bit, a1 is
+ * unused.
+ *
+ * This much is the same as the calling conventions for ordinary
+ * function calls. In addition, the system call number is passed in
+ * the v0 register.
+ *
+ * On successful return, the return value is passed back in the v0
+ * register, or v0 and v1 if 64-bit. This is also like an ordinary
+ * function call, and additionally the a3 register is also set to 0 to
+ * indicate success.
+ *
+ * On an error return, the error code is passed back in the v0
+ * register, and the a3 register is set to 1 to indicate failure.
+ * (Userlevel code takes care of storing the error code in errno and
+ * returning the value -1 from the actual userlevel syscall function.
+ * See src/user/lib/libc/arch/mips/syscalls-mips.S and related files.)
+ *
+ * Upon syscall return the program counter stored in the trapframe
+ * must be incremented by one instruction; otherwise the exception
+ * return code will restart the "syscall" instruction and the system
+ * call will repeat forever.
+ *
+ * If you run out of registers (which happens quickly with 64-bit
+ * values) further arguments must be fetched from the user-level
+ * stack, starting at sp+16 to skip over the slots for the
+ * registerized values, with copyin().
+ */
 void
 syscall(struct trapframe *tf)
 {
 	int callno;
-	int32_t retval, retval_2, arg_2;
+	int32_t retval;
 	int err;
-	uint64_t arg, retval_3;
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -102,62 +102,112 @@ syscall(struct trapframe *tf)
 
 	retval = 0;
 
+	/* note the casts to userptr_t */
+
 	switch (callno) {
-	case SYS_reboot:
+	    case SYS_reboot:
 		err = sys_reboot(tf->tf_a0);
 		break;
 
-	case SYS___time:
+	    case SYS___time:
 		err = sys___time((userptr_t)tf->tf_a0,
-						 (userptr_t)tf->tf_a1);
+				 (userptr_t)tf->tf_a1);
 		break;
 
-	case SYS_open:
-		err = sys_open((userptr_t)tf->tf_a0, (int)tf->tf_a1, &retval);
+
+	    /* file calls */
+
+	    case SYS_open:
+		err = sys_open(
+			(userptr_t)tf->tf_a0,
+			tf->tf_a1,
+			tf->tf_a2,
+			&retval);
 		break;
 
-	case SYS_close:
+	    case SYS_dup2:
+		err = sys_dup2(
+			tf->tf_a0,
+			tf->tf_a1,
+			&retval);
+		break;
+
+	    case SYS_close:
 		err = sys_close(tf->tf_a0);
 		break;
 
-	case SYS_dup2:
-		err = sys_dup2((int)tf->tf_a0,(int)tf->tf_a1,&retval);
+	    case SYS_read:
+		err = sys_read(
+			tf->tf_a0,
+			(userptr_t)tf->tf_a1,
+			tf->tf_a2,
+			&retval);
+		break;
+	    case SYS_write:
+		err = sys_write(
+			tf->tf_a0,
+			(userptr_t)tf->tf_a1,
+			tf->tf_a2,
+			&retval);
+		break;
+	    case SYS_lseek:
+		{
+			/*
+			 * Because the position argument is 64 bits wide,
+			 * it goes in the a2/a3 registers and we have to
+			 * get "whence" from the stack. Furthermore, the
+			 * return value is 64 bits wide, so the extra
+			 * part of it goes in the v1 register.
+			 *
+			 * This is a trifle messy.
+			 */
+			uint64_t offset;
+			int whence;
+			off_t retval64;
+
+			join32to64(tf->tf_a2, tf->tf_a3, &offset);
+
+			err = copyin((userptr_t)tf->tf_sp + 16,
+				     &whence, sizeof(int));
+			if (err) {
+				break;
+			}
+
+			err = sys_lseek(tf->tf_a0, offset, whence, &retval64);
+			if (err) {
+				break;
+			}
+
+			split64to32(retval64, &tf->tf_v0, &tf->tf_v1);
+			retval = tf->tf_v0;
+		}
 		break;
 
-	case SYS_chdir:
-		err = sys_chdir((const char*)tf->tf_a0);
+	    case SYS_chdir:
+		err = sys_chdir((userptr_t)tf->tf_a0);
 		break;
 
-	case SYS___getcwd:
-		err = sys__getcwd((char *)tf->tf_a0,(size_t)tf->tf_a1, &retval);
+	    case SYS___getcwd:
+		err = sys___getcwd(
+			(userptr_t)tf->tf_a0,
+			tf->tf_a1,
+			&retval);
 		break;
 
-	case SYS_read:
-		err = sys_read((int)tf->tf_a0,
-				       (userptr_t)tf->tf_a1,
-					   (size_t)tf->tf_a2,
-					   &retval);
+		case SYS_getpid:
+		err = sys_getpid(&retval);
 		break;
-
-	case SYS_write:
-		err = sys_write((int)tf->tf_a0,
-						(userptr_t)tf->tf_a1,
-						(size_t)tf->tf_a2,
-						&retval);
-		break;
-
-	case SYS_lseek:
-		join32to64(tf->tf_a2, tf->tf_a3, &arg);
-		copyin((const_userptr_t) tf->tf_sp + 16, (void *) &arg_2, sizeof(int));
-		err = sys_lseek((int)tf->tf_a0,
-						(off_t)arg,
-						(int)arg_2,
-						(off_t *)&retval_3);
-		split64to32(retval_3, (uint32_t *)&retval, (uint32_t *)&retval_2);
+		case SYS_fork:
+		err = sys___fork(
+			tf,
+			&retval);
 		break;
 
 
-	default:
+	    /* Even more system calls will go here */
+
+
+	    default:
 		kprintf("Unknown syscall %d\n", callno);
 		err = ENOSYS;
 		break;
@@ -176,9 +226,6 @@ syscall(struct trapframe *tf)
 	else {
 		/* Success. */
 		tf->tf_v0 = retval;
-		if (callno == SYS_lseek) {
-			tf->tf_v1 = retval_2;
-		}
 		tf->tf_a3 = 0;      /* signal no error */
 	}
 
@@ -206,5 +253,13 @@ syscall(struct trapframe *tf)
 void
 enter_forked_process(struct trapframe *tf)
 {
-	(void)tf;
+	struct trapframe newtf;
+	memcpy(&newtf,tf, sizeof(newtf));
+	
+	newtf.tf_a3 = 0;
+	newtf.tf_v0 = 0;
+	newtf.tf_epc += 4;
+	kfree(tf);
+	as_activate();
+	mips_usermode(&newtf);
 }

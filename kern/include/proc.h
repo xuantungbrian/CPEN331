@@ -38,12 +38,9 @@
 
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
-#include <synch.h>
-#include <filetable.h>
-#include <limits.h>
+
 struct addrspace;
 struct vnode;
-
 
 /*
  * Process structure.
@@ -58,10 +55,15 @@ struct proc {
 
 	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
+	struct filetable *p_filetable;	/* table of open files */
 
-	struct fdtable *fd;
+	/*pid*/
+	struct pid_table *pid_table;
+	pid_t pid_num;
+
 	/* add more material here as needed */
 };
+
 
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;
@@ -71,6 +73,9 @@ void proc_bootstrap(void);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
+
+/* Create a fresh process for use by fork() */
+int proc_fork(struct proc **ret);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);

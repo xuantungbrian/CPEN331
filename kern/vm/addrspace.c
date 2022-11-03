@@ -59,20 +59,18 @@ as_create(void)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-	struct addrspace *newas;
-
-	newas = as_create();
-	if (newas==NULL) {
-		return ENOMEM;
-	}
-
 	/*
 	 * Write this.
 	 */
 
-	(void)old;
+	*ret->as_vbase1 = old->as_vbase1;
+    *ret->as_pbase1 = old->as_pbase1;
+    *ret->as_npages1 = old->as_npages1;
+    *ret->as_vbase2 = old->as_vbase2;
+    *ret->as_pbase2 = old->as_pbase2;
+    *ret->as_npages2 = old->as_npages2;
+    *ret->as_stackpbase = old->as_stackpbase;
 
-	*ret = newas;
 	return 0;
 }
 
