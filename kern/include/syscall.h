@@ -72,6 +72,7 @@ int sys_chdir(const_userptr_t path);
 int sys___getcwd(userptr_t buf, size_t buflen, int *retval);
 int sys_getpid(int *retval);
 int sys___fork( struct trapframe *tf, int *retval);
+int sys_execv(const char *program, char **args);
 
 
 #endif /* _SYSCALL_H_ */
