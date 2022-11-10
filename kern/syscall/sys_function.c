@@ -476,7 +476,200 @@ sys___fork( struct trapframe *tf, int *retval) {
 	*retval = newproc->pid_num;
 	//kprintf("fork: --%d-- \n", newproc->pid_num);
 	return 0;
+}
 
+/* 
+ *This function replaces the currently executing program with a newly loaded program image
+ */
+int
+sys_execv(const char *program, char **args)
+{
+	struct addrspace *as;
+	struct addrspace *oldas;
+	struct vnode *v;
+	vaddr_t entrypoint, stackptr;
+	int err = 0;
+	char prog_name[PATH_MAX]; //may need to add err for name_max
+	size_t name_sz = 0;
+	int argc = 0;
+	int args_size = 0;
+
+	//copy in program name
+	err = copyinstr((const_userptr_t)program, prog_name, NAME_MAX, &name_sz);
+	if (err) {
+		kprintf("Cannot copy program name from userland\n");
+		return err;
+	}
+
+	//copy in arguments from the old address space
+	for (argc = 0; args[argc] != NULL; argc++) {}
+	size_t *argv_sz = kmalloc(sizeof(size_t)*argc);
+	if (argv_sz == NULL) {
+		return ENOMEM;
+	}
+	char *buf = kmalloc(ARG_MAX);
+	if (buf == NULL) {
+		kprintf("Out of mem for buf\n");
+		kfree(argv_sz);
+		return ENOMEM;
+	}
+	for (int i = 0; i < argc; i++) {
+		err = copyinstr((const_userptr_t)args[i], buf, ARG_MAX, &argv_sz[i]);
+		if (err) {
+			kfree(buf);
+			kfree(argv_sz);
+			kprintf("Cannot copy arguments from userland\n");
+			return err;
+		}
+		args_size = args_size + argv_sz[i];
+		if (args_size > ARG_MAX) {
+			kfree(buf);
+			kfree(argv_sz);
+			return E2BIG;
+		}
+	}
+	kfree(buf);
+
+	char **argv = kmalloc(argc * 4);
+	if (argv == NULL) {
+		return ENOMEM;
+	}
+	for (int i = 0; i < argc; i++) {
+		argv[i] = kmalloc(argv_sz[i]);
+		if (argv[i] == NULL) {
+			for (int a = 0; a<i; a++) {
+				kfree(argv[a]);
+			}
+			kfree(argv_sz);
+			kfree(argv);
+			return ENOMEM;
+		}
+	}
+
+	//int count = 0;
+	for (int i = 0; i < argc; i++) {
+		err = copyinstr((const_userptr_t)args[i], argv[i], argv_sz[i], NULL);
+		if (err) {
+			for (int i = 0; i < argc; i++) {
+				kfree(argv[i]);
+			}
+			kfree(argv_sz);
+			kfree(argv);
+			kprintf("Cannot copy arguments from userland\n");
+			return err;
+		}
+	}
+
+	//Get a new address space
+	as = as_create();
+	if (as == NULL) {
+		for (int i = 0; i < argc; i++) {
+			kfree(argv[i]);
+		}
+		kfree(argv_sz);
+		kfree(argv);
+		return ENOMEM;
+	}
+
+	//Switch to the new address space
+	oldas = proc_setas(as);
+	as_activate();
+
+	//Load a new executable
+	/* Open the file. */
+	err = vfs_open(prog_name, O_RDONLY, 0, &v);
+	if (err) {
+		for (int i = 0; i < argc; i++) {
+			kfree(argv[i]);
+		}
+		kfree(argv_sz);
+		kfree(argv);
+		as_destroy(as);
+		proc_setas(oldas);
+		return err;
+	}
+
+	err = load_elf(v, &entrypoint);
+	if (err) {
+		vfs_close(v);
+		for (int i = 0; i < argc; i++) {
+			kfree(argv[i]);
+		}
+		kfree(argv_sz);
+		kfree(argv);
+		as_destroy(as);
+		proc_setas(oldas);
+		return err;
+	}
+	vfs_close(v);
+
+	//Define a new stack region
+	err = as_define_stack(as, &stackptr);
+	if (err) {
+		for (int i = 0; i < argc; i++) {
+			kfree(argv[i]);
+		}
+		kfree(argv_sz);
+		kfree(argv);
+		as_destroy(as);
+		proc_setas(oldas);
+		return err;
+	}
+	
+	
+	//Copy the arguments to the new address space, properly arranging them.
+	vaddr_t *temp = kmalloc(4*(argc + 1));
+	int paddings;
+	for (int i = argc - 1; i >= 0; i--) {
+		paddings = 4 - argv_sz[i] % 4;
+		if (paddings == 4) {
+			paddings = 0;
+		}
+		stackptr = stackptr - argv_sz[i] - paddings;
+		err = copyoutstr(argv[i], (userptr_t)stackptr, argv_sz[i], NULL);
+		if (err) {
+			for (int a = 0; a < argc; a++) {
+				kfree(argv[a]);
+			}
+			kfree(argv_sz);
+			kfree(argv);
+			as_destroy(as);
+			proc_setas(oldas);
+			return err;
+		}
+		temp[i] = stackptr;
+	}
+	temp[argc] = (vaddr_t)NULL;
+	
+	for (int i = 0; i < argc; i++) {
+		kfree(argv[i]);
+	}
+	kfree(argv);
+	kfree(argv_sz);
+	
+	for (int i = argc; i >= 0; i--) {
+		stackptr = stackptr - 4;
+		err = copyout((const void*)&temp[i], (userptr_t)stackptr, 4);
+		if (err) {
+			as_destroy(as);
+			proc_setas(oldas);
+			return err;
+		}
+	}
+
+	//Clean up the old address space
+	as_destroy(oldas);
+	vaddr_t a = stackptr;
+	stackptr = USERSTACK - (USERSTACK - stackptr) + 8 - (USERSTACK - stackptr) % 4;
+
+	//Warp to user mode
+	enter_new_process(argc /*argc*/, (userptr_t)a /*userspace addr of argv*/,
+		NULL /*userspace addr of environment*/,
+		stackptr, entrypoint);
+
+	/* enter_new_process does not return. */
+	panic("enter_new_process returned in execv\n");
+	return EINVAL;
 }
 
 void
