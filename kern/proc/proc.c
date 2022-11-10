@@ -51,6 +51,7 @@
 #include <vnode.h>
 #include <filetable.h>
 #include <pid.h>
+#include <synch.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -99,7 +100,11 @@ proc_create(const char *name)
 	else {
 		proc->pid_table = pid_create();
 	}
-
+	proc->parent_table = NULL;
+	proc->waitlock = lock_create("waitlock");
+	proc->waitcv = cv_create("waitcv");
+	proc->exit = 0;
+	proc->exitcode =0;
 	return proc;
 }
 
@@ -119,6 +124,12 @@ proc_destroy(struct proc *proc)
 	 * hang around beyond process exit. Some wait/exit designs
 	 * do, some don't.
 	 */
+	lock_destroy(proc->waitlock);
+	cv_destroy(proc->waitcv);
+	if(proc->parent_table != NULL){
+		lock_destroy(proc->parent_table->parent_lock);
+		kfree(proc->parent_table);
+	}
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
@@ -290,6 +301,15 @@ proc_fork(struct proc **ret)
 		proc->p_cwd = curproc->p_cwd;
 	}
 	spinlock_release(&curproc->p_lock);
+	
+	lock_acquire(curproc->parent_table->parent_lock);
+	for (int i = 0; i <= __PID_MAX - 1; i++) {
+		if (curproc->parent_table->childs[i] == NULL) {
+			curproc->parent_table->childs[i] = proc;
+			break;
+		}
+	}
+	lock_release(curproc->parent_table->parent_lock);
 
 	*ret = proc;
 	return 0;

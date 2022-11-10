@@ -52,3 +52,13 @@ void pid_destroy(void)
 	else {
 		curproc->pid_table = pid_create();
 	}*/
+
+struct parent_table* parent_create(void) //do I need to assign pid 1?
+{
+	struct parent_table *temp = kmalloc(sizeof(struct parent_table));
+	temp->parent_lock = lock_create("parent_lock");
+	for (int i = 0; i <= __PID_MAX - 1; i++) {
+		temp->childs[i] = NULL;
+	}
+	return temp;
+}

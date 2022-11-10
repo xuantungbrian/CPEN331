@@ -44,7 +44,8 @@
 #include "opt-synchprobs.h"
 #include "opt-sfs.h"
 #include "opt-net.h"
-
+#include "pid.h"
+#include <synch.h>
 /*
  * In-kernel menu and command dispatcher.
  */
@@ -141,7 +142,23 @@ common_prog(int nargs, char **args)
 	 * The new process will be destroyed when the program exits...
 	 * once you write the code for handling that.
 	 */
-
+	if(kproc->parent_table == NULL) {
+		kproc->parent_table = parent_create();
+	}
+	lock_acquire(kproc->parent_table->parent_lock);
+	for (int i = 0; i <= __PID_MAX - 1; i++) {
+		if (kproc->parent_table->childs[i] == NULL) {
+			kproc->parent_table->childs[i] = proc;
+			break;
+		}
+	}
+	lock_release(kproc->parent_table->parent_lock);
+	int err;
+	int retval;
+	int status;
+	err = sys_waitpid(proc->pid_num, (userptr_t)&status, 0, &retval);
+	(void) err;
+	kprintf("done common_prog");
 	return 0;
 }
 
@@ -714,8 +731,5 @@ menu(char *args)
 		kprintf("OS/161 kernel [? for menu]: ");
 		kgets(buf, sizeof(buf));
 		menu_execute(buf, 0);
-		while(1){
-			continue;
-		}
 	}
 }

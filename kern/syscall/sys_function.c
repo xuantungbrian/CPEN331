@@ -50,6 +50,9 @@
 #include <syscall.h>
 #include <addrspace.h>
 #include <mips/trapframe.h>
+#include <pid.h>
+#include <kern/wait.h>
+#include <synch.h>
 
 /*
  * open() - get the path with copyinstr, then use openfile_open and
@@ -401,6 +404,11 @@ sys___fork( struct trapframe *tf, int *retval) {
 		return ENOMEM;
 	}
 */
+	if(curproc->parent_table == NULL) {
+		curproc->parent_table = parent_create();
+	}
+
+
 	err = proc_fork(&newproc);
 	if (err) {
 		return err;
@@ -466,6 +474,7 @@ sys___fork( struct trapframe *tf, int *retval) {
 	}
 	//proc_destroy(newproc);
 	*retval = newproc->pid_num;
+	//kprintf("fork: --%d-- \n", newproc->pid_num);
 	return 0;
 
 }
@@ -475,4 +484,67 @@ childthread(void *newtf, unsigned long data2) {
 	(void) data2;
 	enter_forked_process(newtf);
  //do we need to create new trapframe? what if newtf get freed??
+}
+
+int
+sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
+	int err = 0;
+	int i;
+	
+	if (options != 0){
+		return EINVAL;
+	}
+	kprintf("start waitpid %d\n", pid);
+	kprintf("parent pid %d\n", curproc->pid_num);
+	if(curproc->parent_table == NULL) {
+		return ESRCH;
+	}
+
+	lock_acquire(curproc->parent_table->parent_lock);
+
+	for (i = 0; i <= __PID_MAX - 1 ; i++) {
+		if(curproc->parent_table->childs[i] != NULL) {
+			if (curproc->parent_table->childs[i]->pid_num == pid){
+				if(curproc->parent_table->childs[i]->exit == 1){
+					copyout(&curproc->parent_table->childs[i]->exitcode,status, sizeof(int));
+					proc_destroy(curproc->parent_table->childs[i]);
+					curproc->parent_table->childs[i] = NULL;
+					*retval = pid;
+					//kprintf("wait pid done: --%d-- \n", pid);
+					break;
+				}
+				else if(curproc->parent_table->childs[i]->exit == 0){
+					lock_acquire(curproc->parent_table->childs[i]->waitlock);
+					cv_wait(curproc->parent_table->childs[i]->waitcv, curproc->parent_table->childs[i]->waitlock);
+					copyout(&curproc->parent_table->childs[i]->exitcode,status, sizeof(int));
+					lock_release(curproc->parent_table->childs[i]->waitlock);
+					proc_destroy(curproc->parent_table->childs[i]);
+					curproc->parent_table->childs[i] = NULL;
+					*retval = pid;
+					//kprintf("wait pid done: --%d-- \n", pid);
+					break;
+				}
+			}
+		}
+	}
+	if(i == __PID_MAX){
+		lock_release(curproc->parent_table->parent_lock);
+		return ECHILD;
+	}
+	kprintf("Done waitpid %d\n", pid);
+	lock_release(curproc->parent_table->parent_lock);
+	return err;
+ //do we need to create new trapframe? what if newtf get freed??
+}
+
+void
+sys_exit(int exitcode){
+	kprintf("start exit %d\n", curproc->pid_num);
+	//lock_acquire(curproc->parent_table->childs[i]->waitlock);
+	curproc->exitcode = _MKWAIT_EXIT(exitcode);
+	curproc->exit = 1;
+	cv_broadcast(curproc->waitcv, curproc->waitlock);
+	//lock_release(curproc->parent_table->childs[i]->waitlock);
+	//kprintf("exit pid: %i", exitcode);
+	thread_exit();
 }

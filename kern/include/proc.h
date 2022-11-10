@@ -59,6 +59,11 @@ struct proc {
 
 	/*pid*/
 	struct pid_table *pid_table;
+	struct parent_table *parent_table;
+	int exit;
+	int exitcode;
+	struct lock *waitlock;
+	struct cv *waitcv;
 	pid_t pid_num;
 
 	/* add more material here as needed */
