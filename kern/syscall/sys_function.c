@@ -388,10 +388,11 @@ sys___getcwd(userptr_t buf, size_t buflen, int *retval)
 	return 0;
 }
 
+/*Return pid number of the current process in argument retval*/
 int 
-sys_getpid(int *retval) { //Should this need lock?
+sys_getpid(int *retval) { 
 	*retval = curproc->pid_num;
-	return 0; //should add errors
+	return 0; 
 }
 
 int
@@ -497,28 +498,35 @@ sys_execv(const char *program, char **args)
 	//copy in program name
 	err = copyinstr((const_userptr_t)program, prog_name, NAME_MAX, &name_sz);
 	if (err) {
-		kprintf("Cannot copy program name from userland\n");
+		return err;
+	}
+
+	char *buf = kmalloc(ARG_MAX);
+	if (buf == NULL) {
+		return ENOMEM;
+	}
+
+	//Checking validity of args
+	err = copyin((const_userptr_t)args, buf, 4);
+	if (err) {
+		kfree(buf);
 		return err;
 	}
 
 	//copy in arguments from the old address space
-	for (argc = 0; args[argc] != NULL; argc++) {}
+	for (argc = 0; args[argc] != NULL; argc++) {} //Getting argc
 	size_t *argv_sz = kmalloc(sizeof(size_t)*argc);
 	if (argv_sz == NULL) {
+		kfree(buf);
 		return ENOMEM;
 	}
-	char *buf = kmalloc(ARG_MAX);
-	if (buf == NULL) {
-		kprintf("Out of mem for buf\n");
-		kfree(argv_sz);
-		return ENOMEM;
-	}
+
+	//Getting size of each string
 	for (int i = 0; i < argc; i++) {
 		err = copyinstr((const_userptr_t)args[i], buf, ARG_MAX, &argv_sz[i]);
 		if (err) {
 			kfree(buf);
 			kfree(argv_sz);
-			kprintf("Cannot copy arguments from userland\n");
 			return err;
 		}
 		args_size = args_size + argv_sz[i];
@@ -537,7 +545,7 @@ sys_execv(const char *program, char **args)
 	for (int i = 0; i < argc; i++) {
 		argv[i] = kmalloc(argv_sz[i]);
 		if (argv[i] == NULL) {
-			for (int a = 0; a<i; a++) {
+			for (int a = 0; a < i; a++) {
 				kfree(argv[a]);
 			}
 			kfree(argv_sz);
@@ -546,7 +554,6 @@ sys_execv(const char *program, char **args)
 		}
 	}
 
-	//int count = 0;
 	for (int i = 0; i < argc; i++) {
 		err = copyinstr((const_userptr_t)args[i], argv[i], argv_sz[i], NULL);
 		if (err) {
@@ -555,7 +562,6 @@ sys_execv(const char *program, char **args)
 			}
 			kfree(argv_sz);
 			kfree(argv);
-			kprintf("Cannot copy arguments from userland\n");
 			return err;
 		}
 	}
@@ -615,10 +621,9 @@ sys_execv(const char *program, char **args)
 		proc_setas(oldas);
 		return err;
 	}
-	
-	
+
 	//Copy the arguments to the new address space, properly arranging them.
-	vaddr_t *temp = kmalloc(4*(argc + 1));
+	vaddr_t *temp = kmalloc(4 * (argc + 1));
 	int paddings;
 	for (int i = argc - 1; i >= 0; i--) {
 		paddings = 4 - argv_sz[i] % 4;
@@ -632,6 +637,7 @@ sys_execv(const char *program, char **args)
 				kfree(argv[a]);
 			}
 			kfree(argv_sz);
+			kfree(temp);
 			kfree(argv);
 			as_destroy(as);
 			proc_setas(oldas);
@@ -640,13 +646,13 @@ sys_execv(const char *program, char **args)
 		temp[i] = stackptr;
 	}
 	temp[argc] = (vaddr_t)NULL;
-	
+
 	for (int i = 0; i < argc; i++) {
 		kfree(argv[i]);
 	}
 	kfree(argv);
 	kfree(argv_sz);
-	
+
 	for (int i = argc; i >= 0; i--) {
 		stackptr = stackptr - 4;
 		err = copyout((const void*)&temp[i], (userptr_t)stackptr, 4);
@@ -656,14 +662,13 @@ sys_execv(const char *program, char **args)
 			return err;
 		}
 	}
+	kfree(temp);
 
 	//Clean up the old address space
 	as_destroy(oldas);
-	vaddr_t a = stackptr;
-	stackptr = USERSTACK - (USERSTACK - stackptr) + 8 - (USERSTACK - stackptr) % 4;
 
 	//Warp to user mode
-	enter_new_process(argc /*argc*/, (userptr_t)a /*userspace addr of argv*/,
+	enter_new_process(argc /*argc*/, (userptr_t)stackptr /*userspace addr of argv*/,
 		NULL /*userspace addr of environment*/,
 		stackptr, entrypoint);
 
@@ -688,8 +693,6 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 		kprintf("d\n");
 		return EINVAL;
 	}
-	//kprintf("start waitpid %d\n", pid);
-	//kprintf("parent pid %d\n", curproc->pid_num);
 	if(curproc->parent_table == NULL) {
 		kprintf("e\n");
 		return ESRCH;
@@ -733,7 +736,6 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 		lock_release(curproc->parent_table->parent_lock);
 		return ECHILD;
 	}
-	//kprintf("Done waitpid %d\n", pid);
 	lock_release(curproc->parent_table->parent_lock);
 	return err;
  //do we need to create new trapframe? what if newtf get freed??
@@ -741,7 +743,6 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 
 void
 sys_exit(int exitcode){
-	//kprintf("start exit %d\n", curproc->pid_num);
 	//lock_acquire(curproc->parent_table->childs[i]->waitlock);
 	curproc->exitcode = _MKWAIT_EXIT(exitcode);
 	curproc->exit = 1;
