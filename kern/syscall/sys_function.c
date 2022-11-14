@@ -685,21 +685,30 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 	int i;
 	
 	if (options != 0){
+		kprintf("d\n");
 		return EINVAL;
 	}
-	kprintf("start waitpid %d\n", pid);
-	kprintf("parent pid %d\n", curproc->pid_num);
+	//kprintf("start waitpid %d\n", pid);
+	//kprintf("parent pid %d\n", curproc->pid_num);
 	if(curproc->parent_table == NULL) {
+		kprintf("e\n");
 		return ESRCH;
 	}
-
+	
+	if(pid < 0 || pid > PID_MAX || pid < PID_MIN){
+		kprintf("a\n");
+		return ECHILD;
+	} 
+	if(status == NULL){
+		kprintf("b\n");
+		return EFAULT;
+	}
 	lock_acquire(curproc->parent_table->parent_lock);
-
 	for (i = 0; i <= __PID_MAX - 1 ; i++) {
 		if(curproc->parent_table->childs[i] != NULL) {
 			if (curproc->parent_table->childs[i]->pid_num == pid){
 				if(curproc->parent_table->childs[i]->exit == 1){
-					copyout(&curproc->parent_table->childs[i]->exitcode,status, sizeof(int));
+					err = copyout(&curproc->parent_table->childs[i]->exitcode,status, sizeof(int));
 					proc_destroy(curproc->parent_table->childs[i]);
 					curproc->parent_table->childs[i] = NULL;
 					*retval = pid;
@@ -709,7 +718,7 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 				else if(curproc->parent_table->childs[i]->exit == 0){
 					lock_acquire(curproc->parent_table->childs[i]->waitlock);
 					cv_wait(curproc->parent_table->childs[i]->waitcv, curproc->parent_table->childs[i]->waitlock);
-					copyout(&curproc->parent_table->childs[i]->exitcode,status, sizeof(int));
+					err = copyout(&curproc->parent_table->childs[i]->exitcode,status, sizeof(int));
 					lock_release(curproc->parent_table->childs[i]->waitlock);
 					proc_destroy(curproc->parent_table->childs[i]);
 					curproc->parent_table->childs[i] = NULL;
@@ -724,7 +733,7 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 		lock_release(curproc->parent_table->parent_lock);
 		return ECHILD;
 	}
-	kprintf("Done waitpid %d\n", pid);
+	//kprintf("Done waitpid %d\n", pid);
 	lock_release(curproc->parent_table->parent_lock);
 	return err;
  //do we need to create new trapframe? what if newtf get freed??
@@ -732,12 +741,12 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 
 void
 sys_exit(int exitcode){
-	kprintf("start exit %d\n", curproc->pid_num);
+	//kprintf("start exit %d\n", curproc->pid_num);
 	//lock_acquire(curproc->parent_table->childs[i]->waitlock);
 	curproc->exitcode = _MKWAIT_EXIT(exitcode);
 	curproc->exit = 1;
 	cv_broadcast(curproc->waitcv, curproc->waitlock);
 	//lock_release(curproc->parent_table->childs[i]->waitlock);
-	//kprintf("exit pid: %i", exitcode);
+	//kprintf("exit dapid: %i", exitcode);
 	thread_exit();
 }

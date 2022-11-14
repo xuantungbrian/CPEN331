@@ -126,6 +126,7 @@ proc_destroy(struct proc *proc)
 	 */
 	lock_destroy(proc->waitlock);
 	cv_destroy(proc->waitcv);
+	pid_destroy();
 	if(proc->parent_table != NULL){
 		lock_destroy(proc->parent_table->parent_lock);
 		kfree(proc->parent_table);
@@ -197,7 +198,6 @@ proc_destroy(struct proc *proc)
 		}
 		as_destroy(as);
 	}
-
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
@@ -310,7 +310,6 @@ proc_fork(struct proc **ret)
 		}
 	}
 	lock_release(curproc->parent_table->parent_lock);
-
 	*ret = proc;
 	return 0;
 }
