@@ -155,8 +155,7 @@ common_prog(int nargs, char **args)
 	lock_release(kproc->parent_table->parent_lock);
 	int err;
 	int retval;
-	int status;
-	err = sys_waitpid(proc->pid_num, (userptr_t)&status, 0, &retval);
+	err = sys_waitpid(proc->pid_num, NULL, 0, &retval);
 	(void) err;
 	return 0;
 }

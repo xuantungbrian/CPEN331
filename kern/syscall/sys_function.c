@@ -407,6 +407,9 @@ sys___fork( struct trapframe *tf, int *retval) {
 */
 	if(curproc->parent_table == NULL) {
 		curproc->parent_table = parent_create();
+		if(curproc->parent_table == NULL){
+			return ENOMEM;
+		}
 	}
 
 

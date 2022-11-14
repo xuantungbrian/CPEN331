@@ -56,7 +56,14 @@ void pid_destroy(void)
 struct parent_table* parent_create(void) //do I need to assign pid 1?
 {
 	struct parent_table *temp = kmalloc(sizeof(struct parent_table));
+	if(temp == NULL) {
+		return NULL;
+	}
 	temp->parent_lock = lock_create("parent_lock");
+	if(temp->parent_lock == NULL) {
+		kfree(temp);
+		return NULL;
+	}
 	for (int i = 0; i <= __PID_MAX - 1; i++) {
 		temp->childs[i] = NULL;
 	}

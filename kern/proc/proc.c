@@ -71,8 +71,22 @@ proc_create(const char *name)
 	if (proc == NULL) {
 		return NULL;
 	}
+
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
+		kfree(proc);
+		return NULL;
+	}
+
+	proc->waitlock = lock_create("waitlock");
+	if(	proc->waitlock == NULL) {
+		kfree(proc);
+		return NULL;
+	}
+
+	proc->waitcv = cv_create("waitcv");
+	if(	proc->waitcv == NULL) {
+		lock_destroy(proc->waitlock);
 		kfree(proc);
 		return NULL;
 	}
@@ -101,8 +115,6 @@ proc_create(const char *name)
 		proc->pid_table = pid_create();
 	}
 	proc->parent_table = NULL;
-	proc->waitlock = lock_create("waitlock");
-	proc->waitcv = cv_create("waitcv");
 	proc->exit = 0;
 	proc->exitcode =0;
 	return proc;
