@@ -690,22 +690,16 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 	int i;
 	
 	if (options != 0){
-		kprintf("d\n");
 		return EINVAL;
 	}
 	if(curproc->parent_table == NULL) {
-		kprintf("e\n");
 		return ESRCH;
 	}
 	
 	if(pid < 0 || pid > PID_MAX || pid < PID_MIN){
-		kprintf("a\n");
 		return ECHILD;
 	} 
-	if(status == NULL){
-		kprintf("b\n");
-		return EFAULT;
-	}
+
 	lock_acquire(curproc->parent_table->parent_lock);
 	for (i = 0; i <= __PID_MAX - 1 ; i++) {
 		if(curproc->parent_table->childs[i] != NULL) {
@@ -731,6 +725,9 @@ sys_waitpid(pid_t pid, userptr_t status, int options, int *retval) {
 				}
 			}
 		}
+	}
+	if(status == NULL){
+		err = 0;
 	}
 	if(i == __PID_MAX){
 		lock_release(curproc->parent_table->parent_lock);

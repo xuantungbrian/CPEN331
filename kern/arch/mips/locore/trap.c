@@ -120,7 +120,7 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 		code, sig, trapcodenames[code], epc, vaddr);
 /*	panic("I don't know how to handle this\n");*/
 
-	curproc->exitcode = _MKWAIT_SIG(code);
+	curproc->exitcode = _MKWAIT_SIG(sig);
 	curproc->exit = 1;
 	cv_broadcast(curproc->waitcv, curproc->waitlock);
 	thread_exit();

@@ -158,7 +158,6 @@ common_prog(int nargs, char **args)
 	int status;
 	err = sys_waitpid(proc->pid_num, (userptr_t)&status, 0, &retval);
 	(void) err;
-	kprintf("done common_prog");
 	return 0;
 }
 
