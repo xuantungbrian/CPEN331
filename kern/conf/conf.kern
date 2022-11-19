@@ -380,6 +380,7 @@ file      syscall/runprogram.c
 file      syscall/time_syscalls.c
 file      syscall/sys_function.c
 file      syscall/pid.c
+file      syscall/page_track.c
 
 #
 # Startup and initialization
