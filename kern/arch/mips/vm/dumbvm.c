@@ -37,6 +37,7 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
+#include <page_track.h>
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -76,7 +77,6 @@ getppages(unsigned long npages)
 	paddr_t addr;
 
 	spinlock_acquire(&stealmem_lock);
-
 	addr = ram_stealmem(npages);
 
 	spinlock_release(&stealmem_lock);
@@ -98,9 +98,14 @@ alloc_kpages(unsigned npages)
 void
 free_kpages(vaddr_t addr)
 {
+	int i =0 ;
+	paddr_t paddr = addr - MIPS_KSEG0;
 	/* nothing - leak the memory. */
+	uint8_t npages = paddr / PAGE_SIZE;
 
-	(void)addr;
+	spinlock_acquire(&kproc->page_track->page_lock);
+	kproc->page_track->memory[npages] = 0;
+	spinlock_release(&kproc->page_track->page_lock);
 }
 
 void
