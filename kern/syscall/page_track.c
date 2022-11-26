@@ -11,6 +11,7 @@
 #include <pid.h>
 #include <proc.h>
 #include <current.h>
+#include <spinlock.h>
 
 struct page_track* page_track_create(void) 
 {
@@ -18,7 +19,7 @@ struct page_track* page_track_create(void)
 	int entry = ram / PAGE_SIZE;
 	struct page_track *ret = kmalloc(sizeof(struct page_track));
     ret->memory = kmalloc(entry * sizeof(uint8_t));
-    ret->page_lock = lock_create("page_lock");
+    spinlock_init(&ret->page_lock);
     ret->entry = entry;
 	for (int i = 0; i < entry; i++) {
 		ret->memory[i] = (uint8_t)0;

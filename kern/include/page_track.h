@@ -2,10 +2,11 @@
 #define _PAGE_TRACK_H_
 
 #include <types.h>
+#include <spinlock.h>
 
 struct page_track {
     uint8_t* memory;
-    struct lock *page_lock;
+    struct spinlock page_lock;
     int entry;
 };
 
