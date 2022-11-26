@@ -52,7 +52,6 @@
 #include <filetable.h>
 #include <pid.h>
 #include <synch.h>
-#include <page_track.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -111,11 +110,9 @@ proc_create(const char *name)
 	if (name[i] != b[i]) {
 		proc->pid_table = NULL;
 		proc->pid_num = pid_assign();
-		proc->page_track = NULL;
 	}
 	else {
 		proc->pid_table = pid_create();
-		proc->page_track = page_track_create();
 	}
 	proc->parent_table = NULL;
 	proc->exit = 0;

@@ -37,7 +37,6 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
-#include <page_track.h>
 #include <mainbus.h>
 
 /*
@@ -64,14 +63,19 @@
  * Wrap ram_stealmem in a spinlock.
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
-//static struct page_track* map;
+/*
+ * map keeps track of the state of the page (free or occupied), similar to a bitmap
+ */
 static uint8_t map[PAGE_NUM];
+/*
+ * start indicates whether it is the first time to initialize map, if start == 0, initialize map, if not, do nothing
+ */
 static uint8_t start = 0;
 
 void
 vm_bootstrap(void)
 {
-	
+	/*Do nothing*/
 }
 
 static
@@ -81,7 +85,6 @@ getppages(unsigned long npages)
 	paddr_t addr;
 	spinlock_acquire(&stealmem_lock);
 	addr = ram_stealmem(npages, map);
-
 	spinlock_release(&stealmem_lock);
 	return addr;
 }
@@ -90,7 +93,7 @@ getppages(unsigned long npages)
 vaddr_t
 alloc_kpages(unsigned npages)
 {
-	if (start == 0) {
+	if (start == 0) { //start == 0 so initialize the map
 		for (int i = 0; i < PAGE_NUM; i++) {
 			map[i] = (uint8_t)0;
 		}
@@ -108,7 +111,6 @@ void
 free_kpages(vaddr_t addr)
 {
 	paddr_t paddr = addr - MIPS_KSEG0;
-	/* nothing - leak the memory. */
 	uint8_t npages = paddr / PAGE_SIZE;
 
 	spinlock_acquire(&stealmem_lock);

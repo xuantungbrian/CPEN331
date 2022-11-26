@@ -65,7 +65,6 @@ struct proc {
 	struct lock *waitlock;
 	struct cv *waitcv;
 	pid_t pid_num;
-	struct page_track *page_track;
 
 	/* add more material here as needed */
 };

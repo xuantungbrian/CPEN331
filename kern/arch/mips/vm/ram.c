@@ -31,6 +31,8 @@
 #include <lib.h>
 #include <vm.h>
 #include <mainbus.h>
+#include <spinlock.h>
+#include <proc.h>
 
 
 vaddr_t firstfree;   /* first free virtual address; set by start.S */
@@ -92,20 +94,33 @@ ram_bootstrap(void)
  * so it is not synchronized.
  */
 paddr_t
-ram_stealmem(unsigned long npages)
+ram_stealmem(unsigned long npages, uint8_t* map)
 {
-	size_t size;
 	paddr_t paddr;
-
-	size = npages * PAGE_SIZE;
-
-	if (firstpaddr + size > lastpaddr) {
+	unsigned int i = (firstfree - MIPS_KSEG0)/PAGE_SIZE+1;
+	unsigned int a = 0;
+	unsigned int entry = mainbus_ramsize()/PAGE_SIZE;
+	//start from i, which is the first page that is not occupied
+	for (;i<=entry-npages;i++) {
+		for (a=0; a<npages; a++) { //while loop checking if consecutive npages are free
+			if (map[i+a] != 0) {
+				break;
+			}
+		}
+		if (a==npages) {
+			break;
+		}
+	}
+	
+	if (i==entry-npages+1) {
 		return 0;
 	}
-
-	paddr = firstpaddr;
-	firstpaddr += size;
-
+	
+	for (a=0; a<npages; a++) {
+		map[i+a] = 1;
+	}
+	
+	paddr = i*PAGE_SIZE;
 	return paddr;
 }
 
