@@ -38,7 +38,7 @@
 #include <vm.h> /* for PAGE_SIZE */
 #include <test.h>
 
-#include "opt-dumbvm.h"
+//#include "opt-dumbvm.h"
 
 ////////////////////////////////////////////////////////////
 // km1/km2

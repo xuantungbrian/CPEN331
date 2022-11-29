@@ -37,7 +37,7 @@
 
 #include <vm.h>
 #include "opt-averagevm.h"
-#include "opt-dumbvm.h"
+//#include "opt-dumbvm.h"
 
 struct vnode;
 
